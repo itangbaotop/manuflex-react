@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Form, Input, message, Tag, Popconfirm, Space } from 'antd';
 import { useAuth } from '../../context/AuthContext';
-import { getUsers, deleteUser, createUser, User } from '../../api/iam';
+import { getUsers, deleteUser, createUser } from '../../api/iam';
+import type { User } from '../../api/iam';
 
 const UserPage: React.FC = () => {
   const { getAuthenticatedAxios, user: currentUser } = useAuth();
@@ -34,7 +35,7 @@ const UserPage: React.FC = () => {
       // 自动填充当前管理员的 tenantId，确保租户隔离
       const payload = { 
         ...values, 
-        tenantId: currentUser.tenantId || 'default' 
+        tenantId: currentUser?.tenantId || 'default' 
       };
       
       await createUser(getAuthenticatedAxios(), payload);
@@ -86,7 +87,7 @@ const UserPage: React.FC = () => {
       render: (_: any, record: User) => (
         <Space size="middle">
            {/* 保护机制：不能删除自己 */}
-           {record.username !== currentUser.username && (
+           {currentUser && record.username !== currentUser.username && (
             <Popconfirm 
                 title="Are you sure to delete this user?" 
                 onConfirm={() => handleDelete(record.id)}

@@ -1,7 +1,6 @@
 import React from 'react';
-import { Form, Input, InputNumber, DatePicker, Select, Switch, Checkbox } from 'antd';
-import { MetadataField } from '../api/metadata';
-import dayjs from 'dayjs';
+import { Form, Input, InputNumber, DatePicker, Select, Switch } from 'antd';
+import type { MetadataField } from '../api/metadata';
 
 const { TextArea } = Input;
 

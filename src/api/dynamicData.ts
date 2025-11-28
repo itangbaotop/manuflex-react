@@ -1,10 +1,10 @@
-import { AxiosInstance } from 'axios';
+import type { AxiosInstance } from 'axios';
 
 export interface DynamicData {
   id: number;
   tenantId: string;
   schemaName: string;
-  data: { [key: string]: any }; // 动态字段都在这里
+  data: { [key: string]: any };
   createdAt: string;
   updatedAt: string;
 }
@@ -14,24 +14,32 @@ export interface PageResponse<T> {
   totalElements: number;
   page: number;
   size: number;
+  totalPages: number;
 }
 
-// 通用查询接口
+// 支持排序和过滤的查询接口
 export const searchDynamicData = async (
   axios: AxiosInstance,
   tenantId: string,
   schemaName: string,
   page: number = 0,
   size: number = 10,
-  filters: { [key: string]: any } = {}
+  filters: { [key: string]: any } = {},
+  sortBy?: string,
+  sortOrder?: 'asc' | 'desc'
 ): Promise<PageResponse<DynamicData>> => {
-  const response = await axios.get(`/api/data/${tenantId}/${schemaName}`, {
-    params: {
-      page,
-      size,
-      ...filters // 支持直接透传 filters，如 { "price.gt": 100 }
-    }
-  });
+  const params: any = {
+    page,
+    size,
+    ...filters // 展开过滤条件，例如 { "name.like": "abc" }
+  };
+
+  if (sortBy) {
+    params.sortBy = sortBy;
+    params.sortOrder = sortOrder;
+  }
+
+  const response = await axios.get(`/api/data/${tenantId}/${schemaName}`, { params });
   return response.data;
 };
 

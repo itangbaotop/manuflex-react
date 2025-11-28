@@ -1,4 +1,4 @@
-import { AxiosInstance } from 'axios';
+import type { AxiosInstance } from 'axios';
 
 // 对应后端的 FieldType 枚举
 export type FieldType = 'STRING' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'DATE' | 'DATETIME' | 'ENUM' | 'TEXT' | 'FILE' | 'REFERENCE';
@@ -27,4 +27,9 @@ export const getSchemaByName = async (axios: AxiosInstance, tenantId: string, sc
     params: { name: schemaName, tenantId }
   });
   return response.data;
+};
+
+export const getSchemas = async (axios: AxiosInstance, tenantId: string): Promise<MetadataSchema[]> => {
+    const response = await axios.get(`/api/metadata/schemas/by-tenant/${tenantId}`);
+    return response.data;
 };
