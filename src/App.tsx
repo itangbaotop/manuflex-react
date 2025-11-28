@@ -1,38 +1,35 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom'; // 导入 Routes, Route, Navigate
-import LoginPage from './pages/LoginPage'; // 导入登录页面 (稍后创建)
-import DashboardPage from './pages/DashboardPage'; // 导入仪表盘页面 (稍后创建)
-import LimsSamplesPage from './pages/LimsSamplesPage'; // 导入 LIMS 样品页面 (稍后创建)
-import WorkflowTasksPage from './pages/WorkflowTasksPage'; // 导入工作流任务页面 (稍后创建)
-import { useAuth } from './context/AuthContext'; // 导入认证上下文
+import { Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import MainLayout from './components/MainLayout';
+import UserPage from './pages/iam/UserPage';
+import DynamicCRUDPage from './pages/DynamicCRUDPage'; // 确保你之前已经创建了这个文件
+import { useAuth } from './context/AuthContext';
 
 function App() {
-  const { isAuthenticated } = useAuth(); // 获取认证状态
+  const { isAuthenticated } = useAuth();
 
   return (
-    <div className="App">
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        {/* 受保护的路由 */}
-        <Route
-          path="/dashboard"
-          element={isAuthenticated ? <DashboardPage /> : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/lims-samples"
-          element={isAuthenticated ? <LimsSamplesPage /> : <Navigate to="/login" replace />}
-        />
-        <Route
-          path="/workflow-tasks"
-          element={isAuthenticated ? <WorkflowTasksPage /> : <Navigate to="/login" replace />}
-        />
-        {/* 默认跳转到仪表盘或登录页 */}
-        <Route
-          path="/"
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />}
-        />
-      </Routes>
-    </div>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      
+      {/* 所有受保护的页面都包裹在 MainLayout 中 
+          Outlet 会在 MainLayout 的 Content 区域渲染子路由
+      */}
+      <Route path="/" element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" replace />}>
+        {/* 默认跳转 */}
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        
+        <Route path="dashboard" element={<DashboardPage />} />
+        
+        {/* 系统管理路由 */}
+        <Route path="system/users" element={<UserPage />} />
+
+        {/* 动态业务路由：万能路由，匹配所有 /app/data/xxx */}
+        <Route path="app/data/:schemaName" element={<DynamicCRUDPage />} />
+      </Route>
+    </Routes>
   );
 }
 
