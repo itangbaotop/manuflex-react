@@ -1,22 +1,21 @@
 import React from 'react';
 import { Form, Input, InputNumber, DatePicker, Select, Switch } from 'antd';
-import type { MetadataField } from '../api/metadata';
+import type { MetadataFieldDTO } from '../api/metadata';
+import type { DefaultOptionType } from 'antd/es/select'; // 导入 DefaultOptionType
 
 const { TextArea } = Input;
 
 interface SchemaRendererProps {
-  fields: MetadataField[];
+  fields: MetadataFieldDTO[];
 }
 
 export const SchemaRenderer: React.FC<SchemaRendererProps> = ({ fields }) => {
-  
-  // 核心逻辑：根据 fieldType 渲染不同的组件
-  const renderFormItem = (field: MetadataField) => {
-    const label = field.description || field.fieldName;
-    const name = ['data', field.fieldName]; // 绑定到 values.data.fieldName
+
+  const renderFormItem = (field: MetadataFieldDTO) => {
+    const label = field.label || field.fieldName;
+    const name = ['data', field.fieldName];
     const rules = [
-      { required: field.required, message: `Please input ${label}` },
-      // 可以在这里扩展正则校验： field.validationRule
+      { required: field.required, message: `请输入${label}` },
     ];
 
     switch (field.fieldType) {
@@ -26,15 +25,14 @@ export const SchemaRenderer: React.FC<SchemaRendererProps> = ({ fields }) => {
             <Input />
           </Form.Item>
         );
-      
-      case 'TEXT':
+
+      case 'TEXTAREA':
         return (
           <Form.Item key={field.id} label={label} name={name} rules={rules}>
             <TextArea rows={4} />
           </Form.Item>
         );
 
-      case 'INTEGER':
       case 'NUMBER':
         return (
           <Form.Item key={field.id} label={label} name={name} rules={rules}>
@@ -50,25 +48,19 @@ export const SchemaRenderer: React.FC<SchemaRendererProps> = ({ fields }) => {
         );
 
       case 'DATE':
-      case 'DATETIME':
         return (
           <Form.Item key={field.id} label={label} name={name} rules={rules}>
-            <DatePicker 
-                showTime={field.fieldType === 'DATETIME'} 
-                style={{ width: '100%' }} 
+            <DatePicker
+                style={{ width: '100%' }}
             />
           </Form.Item>
         );
 
       case 'ENUM':
-        // 解析后端的 options JSON 字符串
-        let options = [];
-        try {
-            if (field.options) {
-                options = JSON.parse(field.options).map((opt: string) => ({ label: opt, value: opt }));
-            }
-        } catch (e) {
-            console.error("Failed to parse enum options", e);
+        // 明确声明 options 的类型
+        let options: DefaultOptionType[] = [];
+        if (field.options && Array.isArray(field.options)) {
+            options = field.options.map((opt: string) => ({ label: opt, value: opt }));
         }
         return (
           <Form.Item key={field.id} label={label} name={name} rules={rules}>
@@ -79,7 +71,7 @@ export const SchemaRenderer: React.FC<SchemaRendererProps> = ({ fields }) => {
       default:
         return (
           <Form.Item key={field.id} label={label} name={name}>
-            <Input placeholder={`Unsupported type: ${field.fieldType}`} disabled />
+            <Input placeholder={`不支持的字段类型: ${field.fieldType}`} disabled />
           </Form.Item>
         );
     }

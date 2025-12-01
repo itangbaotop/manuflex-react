@@ -1,118 +1,169 @@
-import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Button, theme, Dropdown, Space, Avatar, Spin } from 'antd';
-import { 
-  UserOutlined, 
-  SettingOutlined, 
-  LogoutOutlined, 
-  MenuUnfoldOutlined, 
-  MenuFoldOutlined, 
-  AppstoreOutlined,
-  DatabaseOutlined,
+import React, { useState, useEffect, useCallback } from 'react';
+import { Layout, Menu, Button, theme, Dropdown, Space, Avatar, Spin, message } from 'antd';
+import {
+  UserOutlined,
+  MenuUnfoldOutlined,
+  MenuFoldOutlined,
+  LogoutOutlined,
   DownOutlined,
-  TableOutlined
+  DatabaseOutlined,
+  TableOutlined,
+  FileOutlined
 } from '@ant-design/icons';
 import { useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { getMenus } from '../api/menu';
+import type { MenuDTO } from '../api/menu';
 import { getSchemas } from '../api/metadata';
-import type { MetadataSchema } from '../api/metadata';
+import type { MetadataSchemaDTO } from '../api/metadata';
+import * as AntdIcons from '@ant-design/icons';
 
 const { Header, Sider, Content } = Layout;
 
-// 定义菜单结构类型
-interface MenuItem {
-    key: string;
-    icon?: React.ReactNode;
-    label: React.ReactNode;
-    children?: MenuItem[];
-    permission?: string; // [新增] 需要的权限
-    roles?: string[];    // [新增] 需要的角色
-}
+const renderIcon = (iconName?: string) => {
+    if (!iconName) return null;
+    const IconComp = (AntdIcons as any)[iconName];
+    return IconComp ? <IconComp /> : <FileOutlined />;
+};
+
+const transformMenuData = (menus: MenuDTO[]): any[] => {
+    return menus
+      .sort((a, b) => a.orderNum - b.orderNum)
+      .map(menu => {
+        const item: any = {
+            key: menu.path || `menu_${menu.id}`,
+            icon: renderIcon(menu.icon),
+            label: menu.name,
+        };
+        if (menu.children && menu.children.length > 0) {
+            item.children = transformMenuData(menu.children);
+        }
+        return item;
+    });
+};
 
 const MainLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [menuItems, setMenuItems] = useState<any[]>([]);
-  const [loadingSchemas, setLoadingSchemas] = useState(false);
-  
+  const [loadingMenus, setLoadingMenus] = useState(false);
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+
   const { token: { colorBgContainer } } = theme.useToken();
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout, user, getAuthenticatedAxios, hasPermission, hasAnyRole } = useAuth();
+  const { logout, user, getAuthenticatedAxios, isAuthenticated, loading: authLoading } = useAuth();
 
-  // 1. 定义静态系统菜单
-  const staticMenus: MenuItem[] = [
-    {
-      key: '/dashboard',
-      icon: <AppstoreOutlined />,
-      label: '仪表盘',
-    },
-    {
-      key: 'system',
-      icon: <SettingOutlined />,
-      label: '系统管理',
-      roles: ['ROLE_ADMIN', 'ROLE_TENANT_ADMIN'], // 只有管理员可见
-      children: [
-        { key: '/system/users', label: '用户管理', permission: 'user:read' },
-        { key: '/system/roles', label: '角色权限', permission: 'role:read' },
-      ]
+  // 处理菜单点击
+  const handleMenuClick = (e: any) => {
+    if (e.key.startsWith('/')) {
+        navigate(e.key);
     }
-  ];
+    setSelectedKeys([e.key]);
+  };
 
-  // 2. 加载动态业务菜单 (Schema)
+  // 处理 SubMenu 展开/折叠
+  const onOpenChange = (keys: string[]) => {
+    setOpenKeys(keys);
+  };
+
+  // 监听路由变化，更新选中和展开的菜单项
   useEffect(() => {
-    const fetchDynamicMenus = async () => {
-      if (!user?.tenantId) return;
-      setLoadingSchemas(true);
-      try {
-        const axios = getAuthenticatedAxios();
-        const schemas = await getSchemas(axios, user.tenantId);
-        
-        // 构建业务菜单部分
-        const appMenu: MenuItem = {
-            key: 'apps',
-            icon: <DatabaseOutlined />,
-            label: '业务应用',
-            children: schemas.map((schema: MetadataSchema) => ({
-                key: `/app/data/${schema.name}`, // 路由到通用 CRUD 页面
-                label: schema.description || schema.name,
-                icon: <TableOutlined />
-            }))
-        };
-        
-        // 合并菜单：静态 + 动态
-        // 这里可以加入一个权限过滤函数
-        const filteredStatic = filterMenus(staticMenus);
-        setMenuItems([...filteredStatic, appMenu]);
-        
-      } catch (error) {
-        console.error("Failed to load schemas", error);
-        // 即使失败，也要显示静态菜单
-        setMenuItems(filterMenus(staticMenus));
-      } finally {
-        setLoadingSchemas(false);
+    const currentPath = location.pathname;
+    setSelectedKeys([currentPath]);
+
+    // 递归查找所有父级菜单的 key，用于展开 SubMenu
+    const getAllParentKeys = (items: any[], path: string, parents: string[] = []): string[] => {
+      for (const item of items) {
+        if (item.key === path) {
+          return parents;
+        }
+        if (item.children && item.children.length > 0) {
+          const childParents = getAllParentKeys(item.children, path, [...parents, item.key]);
+          if (childParents.length > 0) {
+            return childParents;
+          }
+        }
       }
+      return [];
     };
 
-    fetchDynamicMenus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    if (menuItems.length > 0) {
+        const parentsToOpen = getAllParentKeys(menuItems, currentPath);
+        // 合并当前已展开的菜单和需要展开的父级菜单，并去重
+        setOpenKeys(prev => Array.from(new Set([...prev, ...parentsToOpen])));
+    }
 
-  // 3. 递归过滤菜单的辅助函数
-  const filterMenus = (items: MenuItem[]): any[] => {
-      return items
-        .filter(item => {
-            // 检查角色
-            if (item.roles && !hasAnyRole(item.roles)) return false;
-            // 检查权限
-            if (item.permission && !hasPermission(item.permission)) return false;
-            return true;
-        })
-        .map(item => {
-            if (item.children) {
-                return { ...item, children: filterMenus(item.children) };
-            }
-            return item;
-        });
-  };
+  }, [location.pathname, menuItems]); // 依赖 location.pathname 和 menuItems
+
+  // 加载菜单
+  const loadMenus = useCallback(async () => {
+      console.log("MainLayout: 开始加载菜单...");
+      if (authLoading) {
+          console.log("MainLayout: AuthContext 仍在加载中，跳过菜单加载。");
+          return;
+      }
+      if (!isAuthenticated) {
+          console.log("MainLayout: 用户未认证，跳过菜单加载。");
+          setMenuItems([]);
+          return;
+      }
+      if (!user?.tenantId) {
+          console.log("MainLayout: 用户 tenantId 缺失，无法加载业务菜单。");
+      }
+
+      setLoadingMenus(true);
+      try {
+          const axios = getAuthenticatedAxios();
+
+          console.log("MainLayout: 尝试获取系统菜单...");
+          const systemMenus = await getMenus(axios);
+          console.log("MainLayout: 获取到的系统菜单原始数据:", systemMenus);
+          const antdSystemMenus = transformMenuData(systemMenus);
+          console.log("MainLayout: 转换后的 Antd 系统菜单:", antdSystemMenus);
+
+          let appMenu: any = null;
+          if (user?.tenantId) {
+              console.log("MainLayout: 尝试获取业务模型 (tenantId:", user.tenantId, ")...");
+              const schemas = await getSchemas(axios, user.tenantId);
+              console.log("MainLayout: 获取到的 Schema 原始数据:", schemas);
+
+              if (schemas && schemas.length > 0) {
+                  appMenu = {
+                      key: 'apps',
+                      icon: <DatabaseOutlined />,
+                      label: '业务应用',
+                      children: schemas.map((schema: MetadataSchemaDTO) => ({
+                          key: `/app/data/${schema.name}`,
+                          label: schema.description || schema.name,
+                          icon: <TableOutlined />
+                      }))
+                  };
+                  console.log("MainLayout: 构建的业务应用菜单:", appMenu);
+              } else {
+                  console.log("MainLayout: 未获取到任何业务模型。");
+              }
+          } else {
+              console.log("MainLayout: 用户 tenantId 缺失，跳过业务应用菜单构建。");
+          }
+
+          const finalMenus = appMenu ? [...antdSystemMenus, appMenu] : antdSystemMenus;
+          setMenuItems(finalMenus);
+          console.log("MainLayout: 最终菜单项:", finalMenus);
+
+      } catch (e: any) {
+          console.error("MainLayout: 加载菜单失败:", e);
+          message.error(`加载菜单失败: ${e.message || '未知错误'}`);
+          setMenuItems([]);
+      } finally {
+          setLoadingMenus(false);
+          console.log("MainLayout: 菜单加载完成。");
+      }
+  }, [authLoading, isAuthenticated, user?.tenantId, getAuthenticatedAxios, getMenus, getSchemas]);
+
+  useEffect(() => {
+    loadMenus();
+  }, [loadMenus]);
 
   const userMenuItems = [
     {
@@ -127,35 +178,43 @@ const MainLayout: React.FC = () => {
     }
   ];
 
+  if (authLoading) {
+    return (
+      <Layout style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <Spin size="large" tip="认证信息加载中..." />
+      </Layout>
+    );
+  }
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider trigger={null} collapsible collapsed={collapsed} width={220}>
-        <div style={{ 
-          height: 64, 
-          display: 'flex', 
-          alignItems: 'center', 
+        <div style={{
+          height: 64,
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
-          color: 'white', 
+          color: 'white',
           fontSize: 18,
           fontWeight: 'bold',
           background: '#002140'
         }}>
            {collapsed ? 'MF' : 'ManuFlex'}
         </div>
-        
-        <Spin spinning={loadingSchemas} tip="Loading Apps...">
+
+        <Spin spinning={loadingMenus} tip="菜单加载中...">
             <Menu
-            theme="dark"
-            mode="inline"
-            selectedKeys={[location.pathname]}
-            // 默认展开所有以 'apps' 或 'system' 开头的菜单
-            defaultOpenKeys={['apps', 'system']}
-            items={menuItems}
-            onClick={(e) => navigate(e.key)}
+                theme="dark"
+                mode="inline"
+                selectedKeys={selectedKeys}
+                openKeys={openKeys} // 使用状态管理的展开项
+                onOpenChange={onOpenChange} // 处理展开/折叠事件
+                items={menuItems}
+                onClick={handleMenuClick}
             />
         </Spin>
       </Sider>
-      
+
       <Layout>
         <Header style={{ padding: '0 24px', background: colorBgContainer, display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,21,41,0.08)' }}>
           <Button
@@ -164,17 +223,17 @@ const MainLayout: React.FC = () => {
             onClick={() => setCollapsed(!collapsed)}
             style={{ fontSize: '16px', width: 64, height: 64 }}
           />
-          
+
           <Dropdown menu={{ items: userMenuItems }}>
             <Space style={{ cursor: 'pointer', padding: '0 12px', borderRadius: 6, transition: 'all 0.3s' }} className="user-dropdown">
               <Avatar style={{ backgroundColor: '#1890ff' }} icon={<UserOutlined />} />
-              <span style={{ fontSize: 14 }}>{user?.username}</span>
+              <span style={{ fontSize: 14 }}>{user?.username || '访客'}</span>
               <DownOutlined style={{ fontSize: 12, color: '#999' }} />
             </Space>
           </Dropdown>
         </Header>
-        
-        <Content style={{ margin: '24px 16px', padding: 24, minHeight: 280, background: colorBgContainer, borderRadius: 8 }}>
+
+        <Content style={{ margin: '24px 16px', padding: 24, minHeight: 280, background: colorBgContainer, borderRadius: 8, overflow: 'auto' }}>
           <Outlet />
         </Content>
       </Layout>
