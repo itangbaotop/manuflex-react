@@ -1,17 +1,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Table, Button, Modal, Form, Input, message, Tag, Popconfirm, Space, Select, Switch } from 'antd';
+import { Table, Button, Modal, Form, Input, message, Tag, Popconfirm, Space, Select, Switch, TreeSelect } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import { getUsers, getRoles, createUser, updateUser, deleteUser, resetPassword } from '../../api/iam';
 import type { User, Role } from '../../api/iam';
+import { getDepartmentTree } from '../../api/department';
+import type { Department } from '../../api/department';
 import { Tooltip } from 'antd/lib';
 import { Auth } from '../../components/Auth';
 
 const UserPage: React.FC = () => {
-  const { hasPermission, getAuthenticatedAxios, user: currentUser } = useAuth();
+  const { getAuthenticatedAxios, user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deptTree, setDeptTree] = useState<Department[]>([]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -25,9 +28,10 @@ const UserPage: React.FC = () => {
     setLoading(true);
     try {
       const axios = getAuthenticatedAxios();
-      const [userData, roleData] = await Promise.all([getUsers(axios), getRoles(axios)]);
+      const [userData, roleData, deptData] = await Promise.all([getUsers(axios), getRoles(axios), getDepartmentTree(axios)]);
       setUsers(userData);
       setRoles(roleData);
+      setDeptTree(deptData);
     } catch (err) {
       console.error(err);
       message.error('数据加载失败');
@@ -54,6 +58,16 @@ const UserPage: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
+  // 转换部门树给 TreeSelect 用
+  const formatDeptTree = (items: Department[]): any[] => {
+      return items.map(item => ({
+          title: item.name,
+          value: item.id,
+          key: item.id,
+          children: item.children ? formatDeptTree(item.children) : []
+      }));
+  };
+
   const openModal = (user?: User) => {
       setEditingUser(user || null);
       if (user) {
@@ -64,7 +78,8 @@ const UserPage: React.FC = () => {
           
           form.setFieldsValue({
               ...user,
-              roles: roleNames 
+              roles: roleNames,
+              deptId: user.deptId
           });
       } else {
           // 新建模式
@@ -84,7 +99,8 @@ const UserPage: React.FC = () => {
           await updateUser(axios, editingUser.id, {
               email: values.email,
               enabled: values.enabled,
-              roles: values.roles // 传给后端的是角色名列表 ['ROLE_ADMIN']
+              roles: values.roles, // 传给后端的是角色名列表 ['ROLE_ADMIN']
+              deptId: values.deptId
           });
           message.success('用户更新成功');
       } else {
@@ -93,6 +109,7 @@ const UserPage: React.FC = () => {
             email: values.email,
             password: values.password,
             roles: values.roles, 
+            deptId: values.deptId,
             tenantId: currentUser?.tenantId || 'default'
           });
           message.success('用户创建成功');
@@ -121,6 +138,7 @@ const UserPage: React.FC = () => {
 
   const columns = [
     { title: '用户名', dataIndex: 'username', key: 'username', render: (t:string) => <b><UserOutlined style={{marginRight:6}}/>{t}</b> },
+    { title: '部门', dataIndex: 'deptName', key: 'deptName', render: (t:string) => t || '-' },
     { title: '邮箱', dataIndex: 'email', key: 'email' },
     {
       title: '状态',
@@ -203,6 +221,15 @@ const UserPage: React.FC = () => {
         <Form form={form} layout="vertical">
           <Form.Item name="username" label="用户名" rules={[{ required: !editingUser, message: '必填' }]}>
             <Input disabled={!!editingUser} placeholder="登录账号" />
+          </Form.Item>
+
+          <Form.Item name="deptId" label="所属部门">
+              <TreeSelect
+                  treeData={formatDeptTree(deptTree)}
+                  placeholder="选择部门"
+                  treeDefaultExpandAll
+                  allowClear
+              />
           </Form.Item>
 
           <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email' }]}>

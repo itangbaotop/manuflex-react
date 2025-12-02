@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, message, Transfer, Tag, Space, Popconfirm, Card } from 'antd';
+import { Table, Button, Modal, Form, Input, message, Transfer, Tag, Space, Popconfirm, Card, Select } from 'antd';
 import { PlusOutlined, DeleteOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import { getRoles, createRole, deleteRole, updateRolePermissions, getAllPermissions } from '../../api/iam';
 import type { Role, Permission } from '../../api/iam';
+
+
+const DATA_SCOPE_OPTIONS = [
+    { label: '全部数据', value: 'ALL' },
+    { label: '本部门及以下', value: 'DEPT_AND_CHILD' },
+    { label: '本部门数据', value: 'DEPT' },
+    { label: '仅本人数据', value: 'SELF' },
+];
 
 const RolePage: React.FC = () => {
   const { getAuthenticatedAxios } = useAuth();
@@ -99,6 +107,15 @@ const RolePage: React.FC = () => {
     { title: '角色名称', dataIndex: 'name', key: 'name', render: (t: string) => <Tag color="blue">{t}</Tag> },
     { title: '描述', dataIndex: 'description', key: 'description' },
     { 
+        title: '数据范围', 
+        dataIndex: 'dataScope', 
+        key: 'dataScope',
+        render: (val: string) => {
+            const opt = DATA_SCOPE_OPTIONS.find(o => o.value === val);
+            return opt ? <Tag color="cyan">{opt.label}</Tag> : val;
+        }
+    },
+    { 
         title: '操作', 
         key: 'action',
         render: (_: any, record: Role) => (
@@ -129,6 +146,9 @@ const RolePage: React.FC = () => {
                 </Form.Item>
                 <Form.Item name="description" label="描述" rules={[{ required: true }]}>
                     <Input placeholder="例如: LIMS 实验室经理" />
+                </Form.Item>
+                <Form.Item name="dataScope" label="数据权限范围" rules={[{ required: true }]}>
+                    <Select options={DATA_SCOPE_OPTIONS} />
                 </Form.Item>
             </Form>
         </Modal>

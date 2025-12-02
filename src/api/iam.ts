@@ -15,6 +15,7 @@ export interface Role {
   id: number;
   name: string;
   description: string;
+  dataScope: string;
   permissions?: Permission[];
 }
 
@@ -24,6 +25,8 @@ export interface User {
   email: string;
   tenantId: string;
   roles: string[];     // 角色名列表
+  deptId?: number;
+  deptName?: string;
   enabled: boolean;
   createdAt: string;
 }
@@ -34,12 +37,14 @@ export interface CreateUserRequest {
     email: string;
     password?: string;
     tenantId: string;
+    deptId?: number;
     roles?: string[];
 }
 
 export interface UpdateUserRequest {
     email?: string;
     roles?: string[];
+    deptId?: number;
     enabled?: boolean;
 }
 
@@ -71,7 +76,7 @@ export const getRoles = async (axios: AxiosInstance): Promise<Role[]> => {
   return response.data;
 };
 
-export const createRole = async (axios: AxiosInstance, role: { name: string; description: string }): Promise<Role> => {
+export const createRole = async (axios: AxiosInstance, role: { name: string; description: string; dataScope: string }): Promise<Role> => {
   const response = await axios.post('/api/iam/roles', role);
   return response.data;
 };

@@ -7,6 +7,7 @@ import { getCurrentUserMenus } from './api/menu';
 import type { Menu } from './api/menu';
 import { getComponentByPath } from './config/componentMap'; // 引入新方法
 import { Spin } from 'antd';
+import SchemaDesigner from './pages/metadata/SchemaDesigner';
 
 function App() {
   const { isAuthenticated, loading: authLoading, getAuthenticatedAxios } = useAuth();
@@ -75,6 +76,8 @@ function App() {
                 />
             );
         })}
+
+        <Route path="system/metadata/design/:schemaName" element={<SchemaDesigner />} />
 
         <Route path="*" element={<div style={{padding: 24}}>404 Page Not Found</div>} />
       </Route>
