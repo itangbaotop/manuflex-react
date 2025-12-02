@@ -1,45 +1,82 @@
+import React, { useEffect, useState, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
 import MainLayout from './components/MainLayout';
-import UserPage from './pages/iam/UserPage';
-import DynamicCRUDPage from './pages/DynamicCRUDPage';
-import SchemaListPage from './pages/metadata/SchemaListPage';
 import { useAuth } from './context/AuthContext';
-import { Spin, Layout } from 'antd'; // 导入 Spin 和 Layout
+import { getCurrentUserMenus } from './api/menu';
+import type { Menu } from './api/menu';
+import { getComponentByPath } from './config/componentMap'; // 引入新方法
+import { Spin } from 'antd';
 
 function App() {
-  // 从 AuthContext 获取 isAuthenticated 和 loading 状态
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, getAuthenticatedAxios } = useAuth();
+  const [dynamicRoutes, setDynamicRoutes] = useState<any[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
 
-  // 如果认证信息还在加载中，显示一个全局加载指示器
-  if (authLoading) {
-    return (
-      <Layout style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Spin size="large" tip="认证信息加载中..." />
-      </Layout>
-    );
+  useEffect(() => {
+    const loadRoutes = async () => {
+        if (!isAuthenticated) return;
+        setMenuLoading(true);
+        try {
+            const menus = await getCurrentUserMenus(getAuthenticatedAxios());
+            const routes = flattenMenus(menus);
+            setDynamicRoutes(routes);
+        } catch (e) {
+            console.error("加载路由失败", e);
+        } finally {
+            setMenuLoading(false);
+        }
+    };
+    loadRoutes();
+  }, [isAuthenticated, getAuthenticatedAxios]); // 添加依赖
+
+  const flattenMenus = (menus: Menu[]): Menu[] => {
+      let res: Menu[] = [];
+      menus.forEach(m => {
+          // 只有配置了 path 且配置了 component 的节点才生成路由
+          if (m.component && m.path) {
+              res.push(m);
+          }
+          if (m.children) {
+              res = res.concat(flattenMenus(m.children));
+          }
+      });
+      return res;
+  };
+
+  if (authLoading || (isAuthenticated && menuLoading)) {
+      return <div style={{height: '100vh', display:'flex', justifyContent:'center', alignItems:'center'}}><Spin size="large"/></div>;
   }
 
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-
-      {/* 所有受保护的页面都包裹在 MainLayout 中
-          只有当 isAuthenticated 为 true 时才渲染 MainLayout，否则重定向到登录页
-      */}
+      
       <Route path="/" element={isAuthenticated ? <MainLayout /> : <Navigate to="/login" replace />}>
-        {/* 默认跳转到仪表盘 */}
         <Route index element={<Navigate to="/dashboard" replace />} />
+        
+        {/* 动态路由生成 */}
+        {dynamicRoutes.map(route => {
+            // 🔥 这里根据路径动态加载组件
+            const Component = getComponentByPath(route.component!);
+            
+            if (!Component) return null;
 
-        <Route path="dashboard" element={<DashboardPage />} />
+            return (
+                <Route 
+                    key={route.id} 
+                    path={route.path?.replace(/^\//, '')} 
+                    element={
+                        // 🔥 必须包裹 Suspense 用于显示加载状态
+                        <Suspense fallback={<Spin style={{margin: 20}} />}>
+                            <Component />
+                        </Suspense>
+                    } 
+                />
+            );
+        })}
 
-        {/* 系统管理路由 */}
-        <Route path="system/users" element={<UserPage />} />
-        <Route path="system/metadata" element={<SchemaListPage />} />
-
-        {/* 动态业务路由：万能路由，匹配所有 /app/data/xxx */}
-        <Route path="app/data/:schemaName" element={<DynamicCRUDPage />} />
+        <Route path="*" element={<div style={{padding: 24}}>404 Page Not Found</div>} />
       </Route>
     </Routes>
   );

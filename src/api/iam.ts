@@ -1,187 +1,101 @@
-import { useCallback } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { publicApi } from './index';
+import type { AxiosInstance } from 'axios';
 
-// =======================================================
-// IAM 模块的 DTO 类型定义
-// =======================================================
+// ==========================================
+// 1. 数据类型定义 (Types)
+// ==========================================
 
-export interface LoginRequest {
-  identifier: string;
-  password: string;
+export interface Permission {
+  id: number;
+  code: string;        // 权限标识，如 "user:read"
+  name: string;        // 显示名称，如 "查看用户"
+  description: string; // 详细描述
 }
 
-export interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
+export interface Role {
+  id: number;
+  name: string;
+  description: string;
+  permissions?: Permission[];
 }
 
-export interface RefreshTokenRequest {
-  refreshToken: string;
-}
-
-export interface UserDTO {
-  id: string;
+export interface User {
+  id: number;
   username: string;
   email: string;
+  tenantId: string;
+  roles: string[];     // 角色名列表
   enabled: boolean;
-  roles: RoleDTO[]; // <--- **重要修改：改回 RoleDTO[]**
-  // ... 其他用户属性
+  createdAt: string;
 }
 
-export interface UserCreateRequest {
-  username: string;
-  email: string;
-  password?: string;
-  roleIds?: string[];
+// ... (CreateUserRequest, UpdateUserRequest 保持不变) ...
+export interface CreateUserRequest {
+    username: string;
+    email: string;
+    password?: string;
+    tenantId: string;
+    roles?: string[];
 }
 
-export interface UserUpdateRequest {
-  id: string;
-  username?: string;
-  email?: string;
-  enabled?: boolean;
-  roleIds?: string[];
+export interface UpdateUserRequest {
+    email?: string;
+    roles?: string[];
+    enabled?: boolean;
 }
 
-export interface RoleDTO {
-  id: string;
-  name: string;
-  description?: string;
-  permissions: PermissionDTO[];
-}
+// ==========================================
+// 2. 接口方法 (Methods)
+// ==========================================
 
-export interface RoleCreateRequest {
-  name: string;
-  description?: string;
-  permissionIds?: string[];
-}
+export const getUsers = async (axios: AxiosInstance): Promise<User[]> => {
+  const response = await axios.get('/api/iam/users');
+  return response.data;
+};
 
-export interface RoleUpdateRequest {
-  id: string;
-  name?: string;
-  description?: string;
-  permissionIds?: string[];
-}
+export const createUser = async (axios: AxiosInstance, user: Partial<CreateUserRequest>): Promise<User> => {
+  const response = await axios.post('/api/iam/auth/register', user);
+  return response.data;
+};
 
-export interface PermissionDTO {
-  id: string;
-  name: string;
-  code: string;
-  description?: string;
-}
+export const updateUser = async (axios: AxiosInstance, id: number, data: UpdateUserRequest): Promise<User> => {
+  const response = await axios.put(`/api/iam/users/${id}`, data);
+  return response.data;
+};
 
-export interface RolePermissionUpdateRequest {
-  roleId: string;
-  permissionIds: string[];
-}
+export const deleteUser = async (axios: AxiosInstance, id: number): Promise<void> => {
+  await axios.delete(`/api/iam/users/${id}`);
+};
 
-// =======================================================
-// IAM 模块的 API 调用函数 (使用 useCallback 进行记忆)
-// =======================================================
+export const getRoles = async (axios: AxiosInstance): Promise<Role[]> => {
+  const response = await axios.get('/api/iam/roles');
+  return response.data;
+};
 
-export const useIamApi = () => {
-  const { getAuthenticatedAxios } = useAuth();
+export const createRole = async (axios: AxiosInstance, role: { name: string; description: string }): Promise<Role> => {
+  const response = await axios.post('/api/iam/roles', role);
+  return response.data;
+};
 
-  const login = useCallback(async (data: LoginRequest): Promise<LoginResponse> => {
-    const response = await publicApi.post<LoginResponse>('/api/iam/auth/login', data);
-    return response.data;
-  }, []);
+export const deleteRole = async (axios: AxiosInstance, id: number): Promise<void> => {
+  await axios.delete(`/api/iam/roles/${id}`);
+};
 
-  const refreshToken = useCallback(async (data: RefreshTokenRequest): Promise<LoginResponse> => {
-    const response = await publicApi.post<LoginResponse>('/api/iam/auth/refresh-token', data);
-    return response.data;
-  }, []);
+// 更新角色权限
+export const updateRolePermissions = async (axios: AxiosInstance, roleId: number, permissionIds: number[]): Promise<Role> => {
+  // 注意：后端接口路径是 /api/iam/roles/{id}/permissions
+  const response = await axios.put(`/api/iam/roles/${roleId}/permissions`, { 
+      roleId, 
+      permissionIds 
+  });
+  return response.data;
+};
 
-  const logout = useCallback(async (): Promise<void> => {
-    const authAxios = getAuthenticatedAxios();
-    await authAxios.post('/api/iam/auth/logout');
-  }, [getAuthenticatedAxios]);
+// 获取所有权限
+export const getAllPermissions = async (axios: AxiosInstance): Promise<Permission[]> => {
+  const response = await axios.get('/api/iam/permissions');
+  return response.data;
+};
 
-  const getUsers = useCallback(async (params?: any): Promise<UserDTO[]> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.get('/api/iam/users', { params });
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const getUserById = useCallback(async (id: string): Promise<UserDTO> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.get(`/api/iam/users/${id}`);
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const createUser = useCallback(async (data: UserCreateRequest): Promise<UserDTO> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.post('/api/iam/users', data);
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const updateUser = useCallback(async (id: string, data: UserUpdateRequest): Promise<UserDTO> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.put(`/api/iam/users/${id}`, data);
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const deleteUser = useCallback(async (id: string): Promise<void> => {
-    const authAxios = getAuthenticatedAxios();
-    await authAxios.delete(`/api/iam/users/${id}`);
-  }, [getAuthenticatedAxios]);
-
-  const getRoles = useCallback(async (): Promise<RoleDTO[]> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.get('/api/iam/roles');
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const getRoleById = useCallback(async (id: string): Promise<RoleDTO> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.get(`/api/iam/roles/${id}`);
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const createRole = useCallback(async (data: RoleCreateRequest): Promise<RoleDTO> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.post('/api/iam/roles', data);
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const updateRole = useCallback(async (id: string, data: RoleUpdateRequest): Promise<RoleDTO> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.put(`/api/iam/roles/${id}`, data);
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  const deleteRole = useCallback(async (id: string): Promise<void> => {
-    const authAxios = getAuthenticatedAxios();
-    await authAxios.delete(`/api/iam/roles/${id}`);
-  }, [getAuthenticatedAxios]);
-
-  const updateRolePermissions = useCallback(async (roleId: string, permissionIds: string[]): Promise<void> => {
-    const authAxios = getAuthenticatedAxios();
-    await authAxios.put(`/api/iam/roles/${roleId}/permissions`, { permissionIds });
-  }, [getAuthenticatedAxios]);
-
-  const getAllPermissions = useCallback(async (): Promise<PermissionDTO[]> => {
-    const authAxios = getAuthenticatedAxios();
-    const response = await authAxios.get('/api/iam/permissions');
-    return response.data;
-  }, [getAuthenticatedAxios]);
-
-  return {
-    login,
-    refreshToken,
-    logout,
-    getUsers,
-    getUserById,
-    createUser,
-    updateUser,
-    deleteUser,
-    getRoles,
-    getRoleById,
-    createRole,
-    updateRole,
-    deleteRole,
-    updateRolePermissions,
-    getAllPermissions,
-  };
+export const resetPassword = async (axios: AxiosInstance, userId: number, password: string): Promise<void> => {
+  await axios.put(`/api/iam/users/${userId}/password`, { password });
 };

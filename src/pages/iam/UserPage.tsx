@@ -1,61 +1,73 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react'; // 引入 useMemo
+import React, { useEffect, useState, useCallback } from 'react';
 import { Table, Button, Modal, Form, Input, message, Tag, Popconfirm, Space, Select, Switch } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, KeyOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
-import { useIamApi } from '../../api/iam';
-import type { UserDTO, RoleDTO, UserCreateRequest, UserUpdateRequest } from '../../api/iam';
-import type { DefaultOptionType } from 'antd/es/select';
-
-const { Option } = Select; // Option 将不再直接用于渲染，但保留以便兼容旧代码风格或作为参考
+import { getUsers, getRoles, createUser, updateUser, deleteUser, resetPassword } from '../../api/iam';
+import type { User, Role } from '../../api/iam';
+import { Tooltip } from 'antd/lib';
+import { Auth } from '../../components/Auth';
 
 const UserPage: React.FC = () => {
-  const { hasPermission } = useAuth();
-  const { getUsers, getRoles, createUser, updateUser, deleteUser } = useIamApi();
-  const [users, setUsers] = useState<UserDTO[]>([]);
-  const [roles, setRoles] = useState<RoleDTO[]>([]); // 存储所有可选角色
+  const { hasPermission, getAuthenticatedAxios, user: currentUser } = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserDTO | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form] = Form.useForm();
+
+  const [isResetPwdModalOpen, setIsResetPwdModalOpen] = useState(false);
+  const [resetPwdUserId, setResetPwdUserId] = useState<number | null>(null);
+  const [pwdForm] = Form.useForm();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [userData, roleData] = await Promise.all([getUsers(), getRoles()]);
-      console.log('UserPage: Fetched Users Data:', userData);
-      console.log('UserPage: Fetched Roles Data (for Select options):', roleData);
+      const axios = getAuthenticatedAxios();
+      const [userData, roleData] = await Promise.all([getUsers(axios), getRoles(axios)]);
       setUsers(userData);
       setRoles(roleData);
     } catch (err) {
-      console.error('UserPage: 数据加载失败', err);
+      console.error(err);
       message.error('数据加载失败');
     } finally {
       setLoading(false);
     }
-  }, [getUsers, getRoles]);
+  }, [getAuthenticatedAxios]);
+
+  const handleResetPassword = async () => {
+      if (!resetPwdUserId) return;
+      try {
+          const values = await pwdForm.validateFields();
+          await resetPassword(getAuthenticatedAxios(), resetPwdUserId, values.password);
+          message.success('密码重置成功');
+          setIsResetPwdModalOpen(false);
+          pwdForm.resetFields();
+          setResetPwdUserId(null);
+      } catch (e) {
+          message.error('重置失败');
+      }
+  };
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  const openModal = (user?: UserDTO) => {
+  const openModal = (user?: User) => {
       setEditingUser(user || null);
       if (user) {
-          console.log('UserPage: Editing User Data:', user);
-          console.log('UserPage: User Roles for Form (original):', user.roles);
-
-          const roleIdsToSet = Array.isArray(user.roles)
-            ? user.roles.map(r => r.id)
-            : [];
-
-          console.log('UserPage: Role IDs to set in form:', roleIdsToSet);
-
+          // 编辑模式
+          // 后端返回的 User.roles 可能是对象数组 [{id:1, name:'ADMIN'}] 也可能是字符串数组 ['ADMIN']
+          // 我们统一提取 name 作为 form 的 value
+          const roleNames = user.roles.map((r: any) => (typeof r === 'object' ? r.name : r));
+          
           form.setFieldsValue({
               ...user,
-              roleIds: roleIdsToSet
+              roles: roleNames 
           });
       } else {
+          // 新建模式
           form.resetFields();
           form.setFieldsValue({ enabled: true });
       }
@@ -66,31 +78,30 @@ const UserPage: React.FC = () => {
     setLoading(true);
     try {
       const values = await form.validateFields();
+      const axios = getAuthenticatedAxios();
+
       if (editingUser) {
-          const updateData: UserUpdateRequest = {
-              id: editingUser.id,
-              username: values.username,
+          await updateUser(axios, editingUser.id, {
               email: values.email,
               enabled: values.enabled,
-              roleIds: values.roleIds
-          };
-          await updateUser(editingUser.id, updateData);
+              roles: values.roles // 传给后端的是角色名列表 ['ROLE_ADMIN']
+          });
           message.success('用户更新成功');
       } else {
-          const createData: UserCreateRequest = {
+          await createUser(axios, {
             username: values.username,
             email: values.email,
             password: values.password,
-            roleIds: values.roleIds,
-          };
-          await createUser(createData);
+            roles: values.roles, 
+            tenantId: currentUser?.tenantId || 'default'
+          });
           message.success('用户创建成功');
       }
 
       setIsModalOpen(false);
       fetchData();
     } catch (err: any) {
-      console.error('UserPage: 操作失败', err);
+      console.error(err);
       const msg = err.response?.data?.message || '操作失败';
       message.error(msg);
     } finally {
@@ -98,22 +109,18 @@ const UserPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    setLoading(true);
+  const handleDelete = async (id: number) => {
     try {
-      await deleteUser(id);
+      await deleteUser(getAuthenticatedAxios(), id);
       message.success('用户已删除');
       fetchData();
     } catch (err) {
-      console.error('UserPage: 删除失败', err);
       message.error('删除失败');
-    } finally {
-      setLoading(false);
     }
   };
 
   const columns = [
-    { title: '用户名', dataIndex: 'username', key: 'username' },
+    { title: '用户名', dataIndex: 'username', key: 'username', render: (t:string) => <b><UserOutlined style={{marginRight:6}}/>{t}</b> },
     { title: '邮箱', dataIndex: 'email', key: 'email' },
     {
       title: '状态',
@@ -129,16 +136,16 @@ const UserPage: React.FC = () => {
       title: '角色',
       dataIndex: 'roles',
       key: 'roles',
-      render: (userRoles: RoleDTO[]) => {
-        console.log('UserPage: Rendering roles in table:', userRoles);
-        if (!userRoles || !Array.isArray(userRoles) || userRoles.length === 0) {
-            return '-';
-        }
+      render: (userRoles: any[]) => {
+        if (!userRoles || userRoles.length === 0) return <span style={{color:'#ccc'}}>无角色</span>;
         return (
           <Space size={[0, 8]} wrap>
-            {userRoles.map(r => (
-                <Tag key={r.id} color="geekblue">{r.name} ({r.description})</Tag>
-            ))}
+            {userRoles.map((r: any, idx: number) => {
+                const roleName = typeof r === 'object' ? r.name : r;
+                // 特殊颜色处理
+                const color = roleName === 'ROLE_ADMIN' ? 'gold' : 'geekblue';
+                return <Tag key={idx} color={color}>{roleName}</Tag>;
+            })}
           </Space>
         );
       }
@@ -146,36 +153,36 @@ const UserPage: React.FC = () => {
     {
       title: '操作',
       key: 'action',
-      render: (_: any, record: UserDTO) => (
+      render: (_: any, record: User) => (
         <Space>
-           {hasPermission('user:write') && (
-            <Button type="link" icon={<EditOutlined />} onClick={() => openModal(record)}>编辑</Button>
-           )}
-           {hasPermission('user:delete') && (
-            <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.id)}>
-              <Button danger type="link" icon={<DeleteOutlined />}>删除</Button>
-            </Popconfirm>
-           )}
+            <Auth permission="user:create">
+                <Button type="link" icon={<EditOutlined />} onClick={() => openModal(record)}>编辑</Button>
+            </Auth>
+            
+            <Tooltip title="重置密码">
+                <Button type="link" size="small" icon={<KeyOutlined />} onClick={() => {
+                    setResetPwdUserId(record.id);
+                    setIsResetPwdModalOpen(true);
+                }}>重置</Button>
+            </Tooltip>
+            
+            {/* 保护自己不被删除 */}
+            {record.username !== currentUser?.username && (
+                <Popconfirm title="确定删除?" onConfirm={() => handleDelete(record.id)}>
+                  <Button danger type="link" size="small" icon={<DeleteOutlined />}>删除</Button>
+                </Popconfirm>
+            )}
         </Space>
       ),
     },
   ];
 
-  // 使用 useMemo 创建 roleOptions，确保在 roles 变化时才重新计算
-  const roleOptions = useMemo(() => {
-    return roles.map(role => ({
-      label: `${role.name} (${role.description})`,
-      value: role.id,
-    }));
-  }, [roles]);
-
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h2>用户管理</h2>
-        {hasPermission('user:create') && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>添加用户</Button>
-        )}
+      <div style={{ marginBottom: 16 }}>
+        <Auth permission="user:create">
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>添加用户</Button>
+        </Auth>
       </div>
 
       <Table
@@ -183,53 +190,70 @@ const UserPage: React.FC = () => {
         columns={columns}
         dataSource={users}
         loading={loading}
-        pagination={{
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total) => `共 ${total} 条`,
-        }}
+        pagination={{ pageSize: 10 }}
       />
 
       <Modal
         title={editingUser ? "编辑用户" : "新建用户"}
         open={isModalOpen}
         onOk={handleSave}
-        onCancel={() => { setIsModalOpen(false); form.resetFields(); setEditingUser(null); }}
+        onCancel={() => setIsModalOpen(false)}
         confirmLoading={loading}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="username" label="用户名" rules={[{ required: !editingUser, message: '请输入用户名' }]}>
-            <Input disabled={!!editingUser} />
+          <Form.Item name="username" label="用户名" rules={[{ required: !editingUser, message: '必填' }]}>
+            <Input disabled={!!editingUser} placeholder="登录账号" />
           </Form.Item>
 
-          <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email', message: '请输入有效邮箱' }]}>
-            <Input />
+          <Form.Item name="email" label="邮箱" rules={[{ required: true, type: 'email' }]}>
+            <Input placeholder="用于找回密码" />
           </Form.Item>
 
           {!editingUser && (
-              <Form.Item name="password" label="初始密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
-                <Input.Password />
+              <Form.Item name="password" label="初始密码" rules={[{ required: true, min: 6 }]}>
+                <Input.Password placeholder="至少6位" />
               </Form.Item>
           )}
 
           {editingUser && (
-              <Form.Item name="enabled" label="启用状态" valuePropName="checked">
+              <Form.Item name="enabled" label="账号状态" valuePropName="checked">
                   <Switch checkedChildren="启用" unCheckedChildren="禁用" />
               </Form.Item>
           )}
 
-          <Form.Item name="roleIds" label="分配角色">
+          <Form.Item name="roles" label="分配角色">
               <Select
                 mode="multiple"
                 placeholder="请选择角色"
-                options={roleOptions}
-                filterOption={(input, option?: DefaultOptionType) => {
-                    const optionLabel = String(option?.label || '').toLowerCase();
-                    return optionLabel.includes(input.toLowerCase());
-                }}
+                // 使用 options 属性优化性能和显示
+                options={roles.map(role => ({
+                    label: `${role.description} (${role.name})`,
+                    value: role.name // 绑定角色名
+                }))}
+                filterOption={(input, option) => 
+                    ((option?.label as string) || '').toLowerCase().includes(input.toLowerCase())
+                }
               />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="重置密码"
+        open={isResetPwdModalOpen}
+        onOk={handleResetPassword}
+        onCancel={() => { setIsResetPwdModalOpen(false); pwdForm.resetFields(); }}
+        width={400}
+      >
+          <Form form={pwdForm} layout="vertical">
+              <Form.Item 
+                name="password" 
+                label="新密码" 
+                rules={[{ required: true, min: 6, message: '至少6位' }]}
+              >
+                  <Input.Password placeholder="请输入新密码" />
+              </Form.Item>
+          </Form>
       </Modal>
     </div>
   );
