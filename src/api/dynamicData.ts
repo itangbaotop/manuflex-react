@@ -1,69 +1,78 @@
-import type { AxiosInstance } from 'axios'; // 使用 type 导入
-import { useAuth } from '../context/AuthContext';
+import type { AxiosInstance } from 'axios';
 
-// =======================================================
-// Dynamic Data 模块的 DTO 类型定义
-// 这些应该与你的后端 platform-data-service 的 DTO 保持一致
-// =======================================================
-
-export interface FilterRequestDTO {
-  fieldName: string;
-  operator: 'EQ' | 'NE' | 'GT' | 'GE' | 'LT' | 'LE' | 'LIKE' | 'IN'; // 等于, 不等于, 大于, 大于等于, 小于, 小于等于, 模糊匹配, 包含
-  value: string; // 统一为字符串，后端根据字段类型转换
+export interface DynamicData {
+  id: number;
+  tenantId: string;
+  schemaName: string;
+  data: { [key: string]: any };
+  createdBy?: string;
+  deptId?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface PageRequestDTO {
-  page: number; // 页码，从0开始
-  size: number; // 每页大小
-  sortBy?: string; // 排序字段
-  sortOrder?: 'asc' | 'desc'; // 排序顺序
-  filters?: FilterRequestDTO[]; // 过滤条件
-}
-
-export interface PageResponseDTO<T> {
+export interface PageResponse<T> {
   content: T[];
   totalElements: number;
-  totalPages: number;
+  page: number;
   size: number;
-  number: number; // 当前页码 (从0开始)
-  first: boolean;
-  last: boolean;
-  empty: boolean;
+  totalPages: number;
 }
 
-export type DynamicDataCreateRequest = Record<string, any>;
-export type DynamicDataUpdateRequest = Record<string, any>;
-export type DynamicDataResponse = Record<string, any>;
 
-// =======================================================
-// Dynamic Data 模块的 API 调用 Hook
-// =======================================================
-
-export const useDynamicDataApi = () => {
-  const { getAuthenticatedAxios } = useAuth();
-
-  return {
-    getDynamicData: async (schemaName: string, pageRequest: PageRequestDTO): Promise<PageResponseDTO<DynamicDataResponse>> => {
-      const authAxios = getAuthenticatedAxios();
-      const response = await authAxios.post(`/api/data/${schemaName}/list`, pageRequest);
-      return response.data;
-    },
-
-    createDynamicData: async (schemaName: string, data: DynamicDataCreateRequest): Promise<DynamicDataResponse> => {
-      const authAxios = getAuthenticatedAxios();
-      const response = await authAxios.post(`/api/data/${schemaName}`, data);
-      return response.data;
-    },
-
-    updateDynamicData: async (schemaName: string, id: string, data: DynamicDataUpdateRequest): Promise<DynamicDataResponse> => {
-      const authAxios = getAuthenticatedAxios();
-      const response = await authAxios.put(`/api/data/${schemaName}/${id}`, data);
-      return response.data;
-    },
-
-    deleteDynamicData: async (schemaName: string, id: string): Promise<void> => {
-      const authAxios = getAuthenticatedAxios();
-      await authAxios.delete(`/api/data/${schemaName}/${id}`);
-    },
+export const searchDynamicData = async (
+  axios: AxiosInstance,
+  tenantId: string,
+  schemaName: string,
+  page: number = 0,
+  size: number = 10,
+  filters: { [key: string]: any } = {},
+  sortBy?: string,
+  sortOrder?: 'asc' | 'desc'
+): Promise<PageResponse<DynamicData>> => {
+  const params: any = {
+    page,
+    size,
+    ...filters
   };
+  if (sortBy) {
+    params.sortBy = sortBy;
+    params.sortOrder = sortOrder;
+  }
+  const response = await axios.get(`/api/data/${tenantId}/${schemaName}`, { params });
+  return response.data;
+};
+
+export const saveDynamicData = async (
+  axios: AxiosInstance,
+  tenantId: string,
+  schemaName: string,
+  data: any
+): Promise<DynamicData> => {
+  const response = await axios.post(`/api/data/${tenantId}/${schemaName}`, {
+    tenantId,
+    schemaName,
+    data 
+  });
+  return response.data;
+};
+
+export const updateDynamicData = async (
+  axios: AxiosInstance,
+  tenantId: string,
+  schemaName: string,
+  id: number,
+  data: any
+): Promise<DynamicData> => {
+  const response = await axios.put(`/api/data/${tenantId}/${schemaName}/${id}`, data);
+  return response.data;
+};
+
+export const deleteDynamicData = async (
+  axios: AxiosInstance,
+  tenantId: string,
+  schemaName: string,
+  id: number
+): Promise<void> => {
+  await axios.delete(`/api/data/${tenantId}/${schemaName}/${id}`);
 };

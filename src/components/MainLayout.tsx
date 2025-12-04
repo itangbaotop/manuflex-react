@@ -70,30 +70,30 @@ const MainLayout: React.FC = () => {
         }
 
         // 2. 加载业务模型 (独立 try-catch)
-        try {
-            const schemas = await getSchemas(axios, user.tenantId);
-            appMenuChildren = schemas.map((schema: any) => ({
-                key: `/app/data/${schema.name}`,
-                label: schema.description || schema.name,
-                icon: <AntdIcons.TableOutlined />
-            }));
-        } catch (e) {
-            console.error("⚠️ 业务模型加载失败 (可能是服务未启动):", e);
-        }
+        // try {
+        //     const schemas = await getSchemas(axios, user.tenantId);
+        //     appMenuChildren = schemas.map((schema: any) => ({
+        //         key: `/app/data/${schema.name}`,
+        //         label: schema.description || schema.name,
+        //         icon: <AntdIcons.TableOutlined />
+        //     }));
+        // } catch (e) {
+        //     console.error("⚠️ 业务模型加载失败 (可能是服务未启动):", e);
+        // }
 
         // 3. 组装
         const antdSystemMenus = transformMenuData(systemMenus);
         
         const finalMenus = [...antdSystemMenus];
         // 只有当有业务模型时才添加 "业务应用" 目录
-        if (appMenuChildren.length > 0) {
-            finalMenus.push({
-                key: 'apps',
-                icon: <AntdIcons.DatabaseOutlined />,
-                label: '业务应用',
-                children: appMenuChildren
-            });
-        }
+        // if (appMenuChildren.length > 0) {
+        //     finalMenus.push({
+        //         key: 'apps',
+        //         icon: <AntdIcons.DatabaseOutlined />,
+        //         label: '业务应用',
+        //         children: appMenuChildren
+        //     });
+        // }
 
         setMenuItems(finalMenus);
         setMenuKey(prev => prev + 1);

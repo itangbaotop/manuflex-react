@@ -11,6 +11,8 @@ export interface MetadataField {
   options?: string; // JSON string for ENUM
   description?: string;
   validationRule?: string;
+  relatedSchemaName?: string;
+  relatedFieldName?: string;
 }
 
 export interface MetadataSchema {

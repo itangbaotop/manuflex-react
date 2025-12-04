@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, Table, Button, Drawer, Form, Input, Select, Switch, message, Space, Popconfirm, Tag, Alert } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
-import { getSchemaByName, createField, updateField, deleteField } from '../../api/metadata';
+import { getSchemaByName, createField, updateField, deleteField, getSchemas } from '../../api/metadata';
 import type { MetadataSchema, MetadataField } from '../../api/metadata';
 
 const { Option } = Select;
@@ -12,7 +12,9 @@ const SchemaDesigner: React.FC = () => {
   const { schemaName } = useParams<{ schemaName: string }>();
   const { getAuthenticatedAxios, user } = useAuth();
   const navigate = useNavigate();
-  
+  const [allSchemas, setAllSchemas] = useState<MetadataSchema[]>([]);
+  const [relatedFields, setRelatedFields] = useState<MetadataField[]>([]);
+
   const [schema, setSchema] = useState<MetadataSchema | null>(null);
   const [loading, setLoading] = useState(false);
   
@@ -38,6 +40,12 @@ const SchemaDesigner: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schemaName]);
 
+  useEffect(() => {
+      if (user?.tenantId) {
+          getSchemas(getAuthenticatedAxios(), user.tenantId).then(setAllSchemas);
+      }
+  }, [user]);
+
   // 处理保存字段
   const handleSaveField = async () => {
     if (!schema) return; // 保护检查
@@ -47,11 +55,9 @@ const SchemaDesigner: React.FC = () => {
         const axios = getAuthenticatedAxios();
         
         if (editingField?.id) {
-            // ✅ [修正] 传入 schema.id
             await updateField(axios, schema.id, editingField.id, values);
             message.success('字段更新成功');
         } else {
-            // ✅ [修正] 传入 schema.id
             await createField(axios, schema.id, values);
             message.success('字段创建成功');
         }
@@ -70,12 +76,23 @@ const SchemaDesigner: React.FC = () => {
       if (!schema) return; // 保护检查
 
       try {
-          // ✅ [修正] 传入 schema.id
           await deleteField(getAuthenticatedAxios(), schema.id, id);
           message.success('已删除');
           fetchSchema();
       } catch(e) {
           message.error('删除失败');
+      }
+  };
+
+  const handleRelatedSchemaChange = async (targetSchemaName: string) => {
+      if (!user?.tenantId || !targetSchemaName) return;
+      try {
+          const targetSchema = await getSchemaByName(getAuthenticatedAxios(), user.tenantId, targetSchemaName);
+          setRelatedFields(targetSchema.fields || []);
+          // 清空已选的显示字段
+          fieldForm.setFieldsValue({ relatedFieldName: undefined });
+      } catch (e) {
+          message.error("无法加载目标模型字段");
       }
   };
 
@@ -156,7 +173,48 @@ const SchemaDesigner: React.FC = () => {
                     <Option value="DATE">日期 (Date)</Option>
                     <Option value="DATETIME">日期时间 (DateTime)</Option>
                     <Option value="ENUM">枚举 (Enum)</Option>
+                    <Option value="REFERENCE">引用 (Reference)</Option>
                 </Select>
+            </Form.Item>
+            
+            <Form.Item
+                noStyle
+                shouldUpdate={(prev, current) => prev.fieldType !== current.fieldType}
+            >
+                {({ getFieldValue }) => 
+                    getFieldValue('fieldType') === 'REFERENCE' ? (
+                        <div style={{background: '#f5f5f5', padding: 12, borderRadius: 4, marginBottom: 16}}>
+                            <Form.Item 
+                                name="relatedSchemaName" 
+                                label="关联目标模型" 
+                                rules={[{ required: true, message: '请选择关联模型' }]}
+                            >
+                                <Select 
+                                    placeholder="选择要引用的表 (如 Car)" 
+                                    onChange={handleRelatedSchemaChange}
+                                    showSearch
+                                >
+                                    {allSchemas.map(s => (
+                                        <Option key={s.id} value={s.name}>{s.description} ({s.name})</Option>
+                                    ))}
+                                </Select>
+                            </Form.Item>
+                            
+                            <Form.Item 
+                                name="relatedFieldName" 
+                                label="显示字段" 
+                                rules={[{ required: true, message: '请选择显示字段' }]}
+                                help="在下拉框中显示哪个字段的值 (如 brand)"
+                            >
+                                <Select placeholder="选择显示的列">
+                                    {relatedFields.map(f => (
+                                        <Option key={f.fieldName} value={f.fieldName}>{f.description} ({f.fieldName})</Option>
+                                    ))}
+                                </Select>
+                            </Form.Item>
+                        </div>
+                    ) : null
+                }
             </Form.Item>
             
             <Form.Item
