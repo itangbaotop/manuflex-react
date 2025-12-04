@@ -143,10 +143,26 @@ const DynamicCRUDPage: React.FC = () => {
 
   const handleTableChange = (newPagination: any, _filters: any, sorter: any) => {
     const newSortOrder = sorter.order === 'descend' ? 'desc' : (sorter.order === 'ascend' ? 'asc' : undefined);
-    const newSortField = sorter.order ? sorter.field : undefined;
+    
+    // 如果没有 columnKey，再尝试用 field，并处理数组情况
+    let newSortField = sorter.columnKey;
+    
+    if (!newSortField && sorter.field) {
+        newSortField = Array.isArray(sorter.field) 
+            ? sorter.field[sorter.field.length - 1] 
+            : sorter.field;
+    }
+
     setSortField(newSortField);
     setSortOrder(newSortOrder);
-    fetchData(newPagination.current, newPagination.pageSize, activeFilters, newSortField, newSortOrder);
+
+    fetchData(
+        newPagination.current, 
+        newPagination.pageSize, 
+        activeFilters, 
+        newSortField, 
+        newSortOrder
+    );
   };
 
   const handleSearch = async () => {
