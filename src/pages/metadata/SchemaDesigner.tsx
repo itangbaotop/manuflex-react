@@ -174,6 +174,7 @@ const SchemaDesigner: React.FC = () => {
                     <Option value="DATETIME">日期时间 (DateTime)</Option>
                     <Option value="ENUM">枚举 (Enum)</Option>
                     <Option value="REFERENCE">引用 (Reference)</Option>
+                    <Option value="FILE">文件/图片 (File)</Option>
                 </Select>
             </Form.Item>
             

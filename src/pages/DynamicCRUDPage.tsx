@@ -272,12 +272,19 @@ const DynamicCRUDPage: React.FC = () => {
         if (field.fieldType === 'DATETIME') return dayjs(text).format('YYYY-MM-DD HH:mm');
         if (field.fieldType === 'DATE') return dayjs(text).format('YYYY-MM-DD');
         
-        // ✅ [核心修改] 引用类型渲染：直接查缓存 Map
+        // 引用类型渲染：直接查缓存 Map
         if (field.fieldType === 'REFERENCE' && field.relatedSchemaName) {
             const map = referenceMap[field.relatedSchemaName];
             const label = map ? map[text] : null;
             // 如果缓存里有名字，显示名字；否则暂时显示 ID (可能还在加载)
             return <Tag>{label || text}</Tag>;
+        }
+        if (field.fieldType === 'FILE') {
+            const isImage = typeof text === 'string' && text.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+            if (isImage) {
+                return <img src={text} alt="img" style={{ height: 30, borderRadius: 4, border: '1px solid #ddd' }} />;
+            }
+            return <a href={text} target="_blank" rel="noreferrer">下载</a>;
         }
 
         return text;

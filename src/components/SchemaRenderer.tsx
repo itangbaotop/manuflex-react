@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Form, Input, InputNumber, DatePicker, Select, Switch, Radio, Divider } from 'antd';
+import { Form, Input, InputNumber, DatePicker, Select, Switch, message, Divider, Upload, Button } from 'antd';
 import type { MetadataField } from '../api/metadata';
 import { useAuth } from '../context/AuthContext';
 import { searchDynamicData } from '../api/dynamicData';
+import { uploadFile } from '../api/file';
+import { LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -56,6 +58,73 @@ const ReferenceSelect: React.FC<{
             placeholder={`选择 ${schema}...`}
             allowClear
         />
+    );
+};
+
+const FileUploader: React.FC<{
+    value?: string; // 存储的是 URL 字符串
+    onChange?: (val: string) => void;
+}> = ({ value, onChange }) => {
+    const { getAuthenticatedAxios } = useAuth();
+    const [loading, setLoading] = useState(false);
+
+    // 自定义上传逻辑
+    const customRequest = async (options: any) => {
+        const { file, onSuccess, onError } = options;
+        setLoading(true);
+        try {
+            const res = await uploadFile(getAuthenticatedAxios(), file);
+            // 上传成功，将 URL 传给表单
+            onChange?.(res.url); 
+            onSuccess(res);
+            message.success('上传成功');
+        } catch (err) {
+            console.error(err);
+            onError(err);
+            message.error('上传失败');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 如果是图片，显示预览；否则显示链接
+    const isImage = value && (value.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null);
+
+    return (
+        <div>
+            <Upload 
+                customRequest={customRequest} 
+                showUploadList={false} // 我们自己控制展示
+            >
+                <Button icon={loading ? <LoadingOutlined /> : <UploadOutlined />}>
+                    点击上传
+                </Button>
+            </Upload>
+            
+            {/* 回显区域 */}
+            {value && (
+                <div style={{ marginTop: 8, border: '1px solid #eee', padding: 8, borderRadius: 4, display: 'inline-block' }}>
+                    {isImage ? (
+                        // 图片：直接预览 (inline)
+                        <img 
+                            src={value} 
+                            alt="preview" 
+                            style={{ maxWidth: '200px', maxHeight: '150px', objectFit: 'contain' }} 
+                        />
+                    ) : (
+                        // 文件：点击强制下载 (attachment)
+                        // 注意：这里拼接 ?download=true
+                        <a 
+                            href={`${value}?download=true`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                        >
+                            {value.split('/').pop()} (点击下载)
+                        </a>
+                    )}
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -144,6 +213,12 @@ export const SchemaRenderer: React.FC<SchemaRendererProps> = ({ fields }) => {
                     schema={field.relatedSchemaName!} 
                     displayField={field.relatedFieldName!} 
                 />
+            </Form.Item>
+        );
+      case 'FILE':
+        return (
+            <Form.Item key={field.fieldName} label={label} name={name} rules={rules}>
+                <FileUploader />
             </Form.Item>
         );
 
