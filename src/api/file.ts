@@ -14,6 +14,6 @@ export const uploadFile = async (axios: AxiosInstance, file: File): Promise<File
   formData.append('file', file);
 
   // 注意：Content-Type 会由浏览器自动设置为 multipart/form-data
-  const response = await axios.post('/api/file/upload', formData);
+  const response = await axios.post('/api/file/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
   return response.data;
 };
