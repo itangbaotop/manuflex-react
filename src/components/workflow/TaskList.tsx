@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Tag, message, Modal, Form, Input } from 'antd';
+import { Table, Button, Space, Tag, message, Modal, Form, Input, Card, Select } from 'antd';
 import { CheckOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import { getTasks, completeTask, claimTask, type Task } from '../../api/workflow';
@@ -63,11 +63,24 @@ const TaskList: React.FC = () => {
 
   const openCompleteModal = async (task: Task) => {
     setSelectedTask(task);
+    
+    // 加载业务数据
+    if (task.variables?.schemaName && task.variables?.dataId) {
+      try {
+        const axios = getAuthenticatedAxios();
+        const dataResponse = await axios.get(`/api/data/${task.variables.schemaName}/${task.variables.dataId}`);
+        setSelectedTask(prev => ({ ...prev!, variables: { ...prev!.variables, businessData: dataResponse.data } }));
+      } catch (error) {
+        console.error('加载业务数据失败:', error);
+      }
+    }
+    
     if (task.formKey) {
       try {
         const axios = getAuthenticatedAxios();
         const response = await getFormDefinition(axios, task.formKey);
-        setSelectedTask({ ...task, formSchema: response.data.schema });
+        const parsed = typeof response.data.schema === 'string' ? JSON.parse(response.data.schema) : response.data.schema;
+        setSelectedTask(prev => ({ ...prev!, formSchema: parsed }));
       } catch (error) {
         console.error('加载表单失败:', error);
       }
@@ -154,6 +167,13 @@ const TaskList: React.FC = () => {
         footer={null}
         width={selectedTask?.formSchema ? 800 : 520}
       >
+        {selectedTask?.variables?.businessData && (
+          <Card title="业务数据" size="small" style={{ marginBottom: 16 }}>
+            <pre style={{ maxHeight: 200, overflow: 'auto', background: '#f5f5f5', padding: 8 }}>
+              {JSON.stringify(selectedTask.variables.businessData, null, 2)}
+            </pre>
+          </Card>
+        )}
         {selectedTask?.formSchema ? (
           <FormRenderer
             schema={selectedTask.formSchema}
@@ -163,8 +183,14 @@ const TaskList: React.FC = () => {
           />
         ) : (
           <Form form={form} onFinish={handleComplete} layout="vertical">
-            <Form.Item label="备注" name="comment">
-              <Input.TextArea rows={4} placeholder="请输入完成备注" />
+            <Form.Item label="审批意见" name="comment">
+              <Input.TextArea rows={4} placeholder="请输入审批意见" />
+            </Form.Item>
+            <Form.Item label="审批结果" name="approved" rules={[{ required: true }]}>
+              <Select placeholder="请选择">
+                <Select.Option value={true}>通过</Select.Option>
+                <Select.Option value={false}>拒绝</Select.Option>
+              </Select>
             </Form.Item>
             <Form.Item>
               <Space>

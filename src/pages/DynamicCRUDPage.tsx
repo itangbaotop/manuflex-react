@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { Table, Button, Modal, Form, message, Space, Popconfirm, Card, Row, Col, Input, Select, Tag } from 'antd';
-import { SearchOutlined, ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, PlusOutlined, EditOutlined, DeleteOutlined, PlayCircleOutlined, EyeOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 import { getSchemaByName } from '../api/metadata';
 import type { MetadataSchema } from '../api/metadata';
@@ -72,7 +72,6 @@ const DynamicCRUDPage: React.FC = () => {
         const axios = getAuthenticatedAxios();
         const schemaData = await getSchemaByName(axios, user.tenantId, schemaName);
         setSchema(schemaData);
-        
         setPagination({ current: 1, pageSize: 10, total: 0 });
         setActiveFilters({});
         searchForm.resetFields();
@@ -291,9 +290,40 @@ const DynamicCRUDPage: React.FC = () => {
       }
     })) || []),
     {
-        title: '操作', key: 'actions', width: 150, fixed: 'right' as const,
+        title: '流程状态', dataIndex: ['data', 'workflowStatus'], key: 'workflowStatus', width: 120,
+        render: (status: string) => {
+          if (!schema?.workflowEnabled) return null;
+          const map: any = {
+            'DRAFT': { color: 'default', text: '草稿' },
+            'IN_PROGRESS': { color: 'processing', text: '审批中' },
+            'APPROVED': { color: 'success', text: '已通过' },
+            'REJECTED': { color: 'error', text: '已拒绝' },
+          };
+          const config = map[status] || { color: 'default', text: '草稿' };
+          return <Tag color={config.color}>{config.text}</Tag>;
+        }
+    },
+    {
+        title: '操作', key: 'actions', width: 200, fixed: 'right' as const,
         render: (_: any, record: DynamicData) => (
             <Space>
+                {schema?.workflowEnabled && !record.data.processInstanceId && (
+                  <Button type="primary" size="small" icon={<PlayCircleOutlined />} onClick={async () => {
+                    try {
+                      const axios = getAuthenticatedAxios();
+                      await axios.post(`/api/data/${schemaName}/${record.id}/start-workflow`, {
+                        processKey: schema.workflowProcessKey
+                      });
+                      message.success('流程启动成功');
+                      fetchData(pagination.current, pagination.pageSize, activeFilters, sortField, sortOrder);
+                    } catch (e: any) {
+                      message.error('启动流程失败: ' + (e.response?.data?.message || e.message));
+                    }
+                  }}>发起流程</Button>
+                )}
+                {record.data.processInstanceId && (
+                  <Button size="small" icon={<EyeOutlined />}>查看流程</Button>
+                )}
                 <Button type="link" size="small" icon={<EditOutlined />} onClick={() => {
                     setEditingId(record.id);
                     const formData = { ...record.data };

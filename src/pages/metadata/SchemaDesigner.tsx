@@ -46,9 +46,8 @@ const SchemaDesigner: React.FC = () => {
       }
   }, [user]);
 
-  // 处理保存字段
   const handleSaveField = async () => {
-    if (!schema) return; // 保护检查
+    if (!schema) return;
 
     try {
         const values = await fieldForm.validateFields();
@@ -71,9 +70,8 @@ const SchemaDesigner: React.FC = () => {
     }
   };
 
-  // 处理删除字段
   const handleDeleteField = async (id: number) => {
-      if (!schema) return; // 保护检查
+      if (!schema) return;
 
       try {
           await deleteField(getAuthenticatedAxios(), schema.id, id);
@@ -89,7 +87,6 @@ const SchemaDesigner: React.FC = () => {
       try {
           const targetSchema = await getSchemaByName(getAuthenticatedAxios(), user.tenantId, targetSchemaName);
           setRelatedFields(targetSchema.fields || []);
-          // 清空已选的显示字段
           fieldForm.setFieldsValue({ relatedFieldName: undefined });
       } catch (e) {
           message.error("无法加载目标模型字段");
@@ -128,7 +125,7 @@ const SchemaDesigner: React.FC = () => {
           <Alert type="info" message="修改字段后，请记得在列表页点击【发布】以同步数据库结构。" showIcon style={{marginLeft: 16, flex: 1}} />
       </div>
       
-      <Card title={`设计模型: ${schema?.description || ''} (${schema?.name || ''})`} extra={
+      <Card title={`设计模型: ${schema?.description || ''} (${schema?.name || ''})`} style={{ marginBottom: 16 }} extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => {
               setEditingField(null);
               fieldForm.resetFields();
@@ -142,6 +139,71 @@ const SchemaDesigner: React.FC = () => {
             loading={loading} 
             pagination={false}
           />
+      </Card>
+
+      <Card title="流程配置" style={{ marginBottom: 16 }}>
+        <Form layout="vertical">
+          <Form.Item label="启用流程">
+            <Switch 
+              checked={schema?.workflowEnabled} 
+              onChange={async (checked) => {
+                try {
+                  const axios = getAuthenticatedAxios();
+                  await axios.put(`/api/metadata/schemas/${schema?.id}`, {
+                    ...schema,
+                    workflowEnabled: checked
+                  });
+                  message.success('更新成功');
+                  fetchSchema();
+                } catch (e) {
+                  message.error('更新失败');
+                }
+              }}
+            />
+          </Form.Item>
+          {schema?.workflowEnabled && (
+            <>
+              <Form.Item label="关联流程">
+                <Input 
+                  value={schema?.workflowProcessKey} 
+                  placeholder="输入流程定义Key，如: leave_approval_process"
+                  onBlur={async (e) => {
+                    try {
+                      const axios = getAuthenticatedAxios();
+                      await axios.put(`/api/metadata/schemas/${schema?.id}`, {
+                        ...schema,
+                        workflowProcessKey: e.target.value
+                      });
+                      message.success('更新成功');
+                      fetchSchema();
+                    } catch (e) {
+                      message.error('更新失败');
+                    }
+                  }}
+                />
+              </Form.Item>
+              <Form.Item label="关联表单">
+                <Input 
+                  value={schema?.workflowFormKey} 
+                  placeholder="输入表单Key，如: leave_application_form"
+                  onBlur={async (e) => {
+                    try {
+                      const axios = getAuthenticatedAxios();
+                      await axios.put(`/api/metadata/schemas/${schema?.id}`, {
+                        ...schema,
+                        workflowFormKey: e.target.value
+                      });
+                      message.success('更新成功');
+                      fetchSchema();
+                    } catch (e) {
+                      message.error('更新失败');
+                    }
+                  }}
+                />
+              </Form.Item>
+            </>
+          )}
+        </Form>
       </Card>
 
       <Drawer

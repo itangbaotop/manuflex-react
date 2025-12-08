@@ -21,6 +21,9 @@ export interface MetadataSchema {
   description: string;
   tenantId: string;
   fields?: MetadataField[];
+  workflowEnabled?: boolean;
+  workflowProcessKey?: string;
+  workflowFormKey?: string;
 }
 
 
