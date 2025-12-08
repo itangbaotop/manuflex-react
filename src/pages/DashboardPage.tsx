@@ -24,7 +24,7 @@ const DashboardPage: React.FC = () => {
           <button onClick={() => navigate('/workflow-tasks')} style={{ marginRight: '10px', padding: '8px 15px', backgroundColor: '#ffc107', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
             View Workflow Tasks
           </button>
-          <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+          <button onClick={handleLogout} style={{ padding: '8px 15px', backgroundColor: '#746d6dff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
             Logout
           </button>
         </div>

@@ -1,0 +1,92 @@
+/* BPMN Properties Panel Styles */
+.bio-properties-panel {
+  background: #fafafa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.bio-properties-panel-group {
+  margin-bottom: 16px;
+}
+
+.bio-properties-panel-group-header {
+  padding: 8px 12px;
+  background: #f0f0f0;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 1px solid #d9d9d9;
+}
+
+.bio-properties-panel-entry {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.bio-properties-panel-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #595959;
+  font-weight: 500;
+}
+
+.bio-properties-panel-input,
+.bio-properties-panel-textarea,
+.bio-properties-panel-select {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 2px;
+  font-size: 13px;
+  transition: border-color 0.3s;
+}
+
+.bio-properties-panel-input:focus,
+.bio-properties-panel-textarea:focus,
+.bio-properties-panel-select:focus {
+  border-color: #1890ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+}
+
+.bio-properties-panel-textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.bio-properties-panel-description {
+  font-size: 11px;
+  color: #8c8c8c;
+  margin-top: 4px;
+}
+
+.bio-properties-panel-checkbox {
+  margin-right: 6px;
+}
+
+.bio-properties-panel-button {
+  padding: 4px 12px;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.3s;
+}
+
+.bio-properties-panel-button:hover {
+  color: #1890ff;
+  border-color: #1890ff;
+}
+
+.bio-properties-panel-list-entry {
+  padding: 6px 12px;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  margin-bottom: 4px;
+  border-radius: 2px;
+}
+
+.bio-properties-panel-list-entry:hover {
+  background: #fafafa;
+  border-color: #d9d9d9;
+}
