@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Form, Input, message, Popconfirm, Space, Card, Tag, Tooltip } from 'antd';
+import { Table, Button, Modal, Form, Input, message, Popconfirm, Space, Card, Tag, Tooltip, Switch, Divider } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ToolOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -122,7 +122,13 @@ const SchemaListPage: React.FC = () => {
             icon={<EditOutlined />} 
             onClick={() => {
                 setEditingSchema(record);
-                form.setFieldsValue(record);
+                form.setFieldsValue({
+                  name: record.name,
+                  description: record.description,
+                  workflowEnabled: record.workflowEnabled || false,
+                  workflowProcessKey: record.workflowProcessKey || '',
+                  workflowFormKey: record.workflowFormKey || ''
+                });
                 setIsModalOpen(true);
             }} 
           />
@@ -154,6 +160,7 @@ const SchemaListPage: React.FC = () => {
         open={isModalOpen} 
         onOk={handleSave} 
         onCancel={() => setIsModalOpen(false)}
+        width={600}
       >
         <Form form={form} layout="vertical">
           <Form.Item 
@@ -166,6 +173,30 @@ const SchemaListPage: React.FC = () => {
           </Form.Item>
           <Form.Item name="description" label="显示名称" rules={[{ required: true }]}>
             <Input placeholder="例如: 车辆管理" />
+          </Form.Item>
+          
+          <Divider orientation="left">流程配置</Divider>
+          
+          <Form.Item name="workflowEnabled" label="启用流程" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, current) => prev.workflowEnabled !== current.workflowEnabled}
+          >
+            {({ getFieldValue }) => 
+              getFieldValue('workflowEnabled') ? (
+                <>
+                  <Form.Item name="workflowProcessKey" label="关联流程" help="输入流程定义Key">
+                    <Input placeholder="例如: leave_approval_process" />
+                  </Form.Item>
+                  <Form.Item name="workflowFormKey" label="关联表单" help="输入表单Key">
+                    <Input placeholder="例如: leave_application_form" />
+                  </Form.Item>
+                </>
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>
