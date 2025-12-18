@@ -11,3 +11,11 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+.markdown-body blockquote {
+  border-left: 4px solid #ddd;
+  color: #666;
+  padding-left: 16px;
+  margin-left: 0;
+  margin-right: 0;
+}

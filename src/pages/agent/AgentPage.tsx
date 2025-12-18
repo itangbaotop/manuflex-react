@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, Input, Button, List, Avatar, Spin, Row, Col, Tag, Space, message, Typography } from 'antd';
+import { Card, Input, Button, List, Avatar, Spin, Row, Col, Tag, Space, message, Typography, Upload } from 'antd';
 import { 
   SendOutlined, 
   RobotOutlined, 
@@ -8,12 +8,20 @@ import {
   FormOutlined, 
   RocketOutlined, 
   TableOutlined,
-  StopOutlined // 新增停止图标
+  StopOutlined, // 新增停止图标
+  DeleteOutlined,
+  PictureOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
 import { getAgents, type AgentInfo } from '../../api/agent'; 
 import { useNavigate } from 'react-router-dom';
 import { fetchSSE } from '../../utils/sseUtils'; // 引入 SSE 工具函数
+import type { UploadFile } from 'antd/lib/upload/interface';
+
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -34,6 +42,9 @@ const AgentPage: React.FC = () => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
   
   // 用于控制滚动和取消请求
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -58,6 +69,49 @@ const AgentPage: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch agents:', error);
     }
+  };
+
+  const MarkdownRenderer: React.FC<{ content: string }> = ({ content }) => {
+    return (
+      <div className="markdown-body" style={{ fontSize: '14px', lineHeight: '1.6' }}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]} // 支持表格、删除线等
+          components={{
+            // 自定义代码块渲染
+            code({node, inline, className, children, ...props}: any) {
+              const match = /language-(\w+)/.exec(className || '');
+              return !inline && match ? (
+                <SyntaxHighlighter
+                  style={vscDarkPlus} // 使用 VSCode 深色主题
+                  language={match[1]}
+                  PreTag="div"
+                  {...props}
+                >
+                  {String(children).replace(/\n$/, '')}
+                </SyntaxHighlighter>
+              ) : (
+                <code className={className} {...props} style={{ background: '#f0f0f0', padding: '2px 4px', borderRadius: 4, color: '#c7254e' }}>
+                  {children}
+                </code>
+              );
+            },
+            // 自定义表格样式 (Ant Design 风格)
+            table: ({node, ...props}) => <table style={{ borderCollapse: 'collapse', width: '100%', marginBottom: 16, border: '1px solid #e8e8e8' }} {...props} />,
+            th: ({node, ...props}) => <th style={{ background: '#fafafa', padding: '12px 8px', borderBottom: '1px solid #e8e8e8', textAlign: 'left', fontWeight: 600 }} {...props} />,
+            td: ({node, ...props}) => <td style={{ padding: '12px 8px', borderBottom: '1px solid #e8e8e8' }} {...props} />,
+            // 自定义链接颜色
+            a: ({node, ...props}) => <a style={{ color: '#1890ff' }} {...props} />,
+            // 段落间距
+            p: ({node, ...props}) => <p style={{ marginBottom: '0.8em' }} {...props} />,
+            // 列表缩进
+            ul: ({node, ...props}) => <ul style={{ paddingLeft: 24, marginBottom: 16 }} {...props} />,
+            ol: ({node, ...props}) => <ol style={{ paddingLeft: 24, marginBottom: 16 }} {...props} />,
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
   };
 
   // 🔥 核心逻辑：解析 AI 回复中的 Action 标签
@@ -127,74 +181,113 @@ const AgentPage: React.FC = () => {
 
     return (
       <div>
-        <div style={{ whiteSpace: 'pre-wrap' }}>{cleanText}</div>
+        <MarkdownRenderer content={cleanText} />
         {actionCard}
       </div>
     );
   };
 
+  const handleImageChange = async (info: any) => {
+    let newFileList = [...info.fileList];
+    // 限制只上传一张，覆盖旧的
+    newFileList = newFileList.slice(-1);
+    setFileList(newFileList);
+
+    if (newFileList.length > 0) {
+      const file = newFileList[0].originFileObj;
+      if (file) {
+        // 校验图片大小 (例如限制 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            message.error('图片大小不能超过 5MB');
+            setFileList([]);
+            setImageBase64(null);
+            return;
+        }
+        
+        // 转 Base64
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+          // 结果格式: "data:image/png;base64,iVBORw0KGgo..."
+          setImageBase64(reader.result as string);
+        };
+      }
+    } else {
+      setImageBase64(null);
+    }
+  };
+
+  const handleRemoveImage = () => {
+      setFileList([]);
+      setImageBase64(null);
+  };
+
   // 发送消息处理函数 (流式)
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() && !imageBase64) return; // 既没文字也没图就不发
 
-    // 1. 构建用户消息
+    // 构建显示内容：如果有图，在气泡里显示缩略图
+    const displayContent = (
+        <div>
+            {imageBase64 && (
+                <img 
+                    src={imageBase64} 
+                    alt="upload" 
+                    style={{ maxWidth: '200px', maxHeight: '150px', display: 'block', marginBottom: 8, borderRadius: 4 }} 
+                />
+            )}
+            {input}
+        </div>
+    );
+
     const userMessage: Message = {
       role: 'user',
-      content: input,
-      displayContent: input,
+      content: input, // 历史记录存文本
+      displayContent: displayContent, // UI 显示带图
       timestamp: new Date()
     };
 
-    // 2. 预先构建一个空的 AI 消息占位
     const assistantMessage: Message = {
       role: 'assistant',
-      content: '', // 初始为空
+      content: '',
       displayContent: '',
       timestamp: new Date(),
       agentType: 'AUTO'
     };
 
-    // 更新 UI，清空输入框
     setMessages(prev => [...prev, userMessage, assistantMessage]);
-    const currentInput = input; // 暂存 input 用于发送请求
+    
+    const currentInput = input;
+    // 这里我们简单处理：传纯 Base64
+    const cleanBase64 = imageBase64 ? imageBase64.split(',')[1] : null;
+
     setInput('');
+    setFileList([]); // 发送后清空图片
+    setImageBase64(null);
     setLoading(true);
 
-    // 3. 准备 AbortController 用于取消请求
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort();
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
     try {
-
-      // 4. 发起 SSE 请求
+      
       await fetchSSE({
-        url: '/api/agent/stream', 
+        url: '/api/agent/stream',
         token: accessToken || '',
         body: {
           input: currentInput,
+          image: cleanBase64, // 传递图片字段
           tenantId: user?.tenantId || ''
         },
         signal: abortController.signal,
         onMessage: (chunk) => {
-          // 收到新片段，更新最后一条消息 (即 assistantMessage)
-          setMessages(prev => {
+           setMessages(prev => {
             const newMessages = [...prev];
             const lastMsg = newMessages[newMessages.length - 1];
-            
             if (lastMsg.role === 'assistant') {
               const newContent = lastMsg.content + chunk;
-              // 更新内容并重新解析 Action 标签
-              return [
-                ...newMessages.slice(0, -1),
-                {
-                  ...lastMsg,
-                  content: newContent,
-                  displayContent: parseMessageContent(newContent)
-                }
-              ];
+              return [...newMessages.slice(0, -1), { ...lastMsg, content: newContent, displayContent: newContent }]; 
             }
             return prev;
           });
@@ -204,16 +297,14 @@ const AgentPage: React.FC = () => {
           abortControllerRef.current = null;
         },
         onError: (err) => {
-          console.error('SSE Error:', err);
-          message.error('回答生成中断或出错');
+          console.error(err);
           setLoading(false);
+          message.error('请求失败');
         }
       });
-
-    } catch (error) {
-      console.error('Request failed:', error);
-      message.error('发送请求失败');
-      setLoading(false);
+    } catch (e) {
+       console.error(e);
+       setLoading(false);
     }
   };
 
@@ -294,43 +385,64 @@ const AgentPage: React.FC = () => {
               )}
             </div>
 
-            <Space.Compact style={{ width: '100%' }}>
-              <TextArea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="在此输入您的需求..."
-                autoSize={{ minRows: 3, maxRows: 6 }}
-                onPressEnter={(e) => {
-                  if (!e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                disabled={loading} // 加载时禁用输入框防止冲突，或者允许排队（这里先禁用简单处理）
-              />
-              {loading ? (
-                <Button
-                  danger // 红色按钮
-                  icon={<StopOutlined />}
-                  onClick={handleStop}
-                  style={{ height: 'auto' }}
-                  size="large"
+
+          <Card style={{ marginTop: 16 }}>
+            {fileList.length > 0 && (
+                <div style={{ marginBottom: 8, padding: 8, background: '#fafafa', borderRadius: 4, display: 'inline-flex', alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, marginRight: 8 }}>已选择图片: {fileList[0].name}</span>
+                    <Button type="text" size="small" icon={<DeleteOutlined />} onClick={handleRemoveImage} danger />
+                </div>
+            )}
+              <Space.Compact style={{ width: '100%' }}>
+
+                <Upload
+                    fileList={fileList}
+                    onChange={handleImageChange}
+                    beforeUpload={() => false}
+                    maxCount={1}
+                    accept="image/*"
+                    showUploadList={false} 
                 >
-                  停止
-                </Button>
-              ) : (
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  onClick={handleSend}
-                  loading={false} // 这里的 loading 状态我们通过按钮切换来控制
-                  style={{ height: 'auto' }}
-                  size="large"
-                >
-                  发送
-                </Button>
-              )}
-            </Space.Compact>
+                    <Button icon={<PictureOutlined />} style={{ height: '100%', borderRadius: '8px 0 0 8px' }} />
+                </Upload>
+                
+                <TextArea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="在此输入您的需求..."
+                  autoSize={{ minRows: 3, maxRows: 6 }}
+                  onPressEnter={(e) => {
+                    if (!e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  disabled={loading} 
+                />
+                {loading ? (
+                  <Button
+                    danger // 红色按钮
+                    icon={<StopOutlined />}
+                    onClick={handleStop}
+                    style={{ height: 'auto' }}
+                    size="large"
+                  >
+                    停止
+                  </Button>
+                ) : (
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    onClick={handleSend}
+                    loading={loading && !abortControllerRef.current}
+                    style={{ height: 'auto' }}
+                    size="large"
+                  >
+                    发送
+                  </Button>
+                )}
+              </Space.Compact>
+            </Card>
           </Card>
         </Col>
         
