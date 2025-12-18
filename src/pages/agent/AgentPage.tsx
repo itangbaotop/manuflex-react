@@ -1,30 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Input, Button, List, Avatar, Spin, Row, Col, Tag, Space, message, Typography } from 'antd';
-import { SendOutlined, RobotOutlined, UserOutlined, ThunderboltOutlined, FormOutlined, RocketOutlined, TableOutlined } from '@ant-design/icons';
+import { 
+  SendOutlined, 
+  RobotOutlined, 
+  UserOutlined, 
+  ThunderboltOutlined, 
+  FormOutlined, 
+  RocketOutlined, 
+  TableOutlined,
+  StopOutlined // 新增停止图标
+} from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext';
-import { getAgents, executeAgent, type AgentInfo } from '../../api/agent';
-import { useNavigate } from 'react-router-dom'; // 导入 useNavigate
+import { getAgents, type AgentInfo } from '../../api/agent'; 
+import { useNavigate } from 'react-router-dom';
+import { fetchSSE } from '../../utils/sseUtils'; // 引入 SSE 工具函数
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
 interface Message {
   role: 'user' | 'assistant';
-  content: string; // 原始文本
-  displayContent?: React.ReactNode; // 解析后的展示内容（包含卡片）
+  content: string; 
+  displayContent?: React.ReactNode; 
   timestamp: Date;
   executionTime?: number;
   agentType?: string;
 }
 
 const AgentPage: React.FC = () => {
-  const { user, getAuthenticatedAxios } = useAuth();
-  const navigate = useNavigate(); // 用于跳转
+  const { user, getAuthenticatedAxios, accessToken } = useAuth();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
+  
+  // 用于控制滚动和取消请求
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetchAgents();
@@ -51,6 +64,9 @@ const AgentPage: React.FC = () => {
   const parseMessageContent = (text: string): React.ReactNode => {
     // 正则匹配 [ACTION:TYPE:VALUE]
     const actionRegex = /\[ACTION:([A-Z_]+):(.+?)\]/g;
+    
+    // 如果还没传输完（例如只传了一半 [ACTION:EDIT_ ），保持原样显示，直到传输完成
+    // 为了防止渲染闪烁，这里我们只解析完整的标签
     const match = actionRegex.exec(text);
 
     if (!match) {
@@ -58,11 +74,10 @@ const AgentPage: React.FC = () => {
     }
 
     const [fullTag, actionType, actionValue] = match;
-    const cleanText = text.replace(fullTag, '').trim(); // 移除标签后的纯文本
+    const cleanText = text.replace(fullTag, '').trim(); 
 
     let actionCard = null;
 
-    // 根据 Action 类型渲染不同的卡片
     if (actionType === 'EDIT_FORM') {
       actionCard = (
         <Card size="small" style={{ marginTop: 12, border: '1px solid #1890ff', background: '#e6f7ff' }}>
@@ -72,11 +87,7 @@ const AgentPage: React.FC = () => {
               <Text strong>表单已创建</Text>
               <div style={{ fontSize: 12, color: '#666' }}>您可以立即前往设计器调整布局</div>
             </div>
-            <Button 
-              type="primary" 
-              size="small" 
-              onClick={() => navigate(`/workflow/forms`)} // 这里可以做得更细，直接跳到编辑页
-            >
+            <Button type="primary" size="small" onClick={() => navigate(`/workflow/forms`)}>
               去设计器
             </Button>
           </Space>
@@ -91,16 +102,13 @@ const AgentPage: React.FC = () => {
               <Text strong>流程已启动</Text>
               <div style={{ fontSize: 12, color: '#666' }}>实例ID: {actionValue}</div>
             </div>
-            <Button 
-              size="small" 
-              onClick={() => navigate(`/workflow/instances`)}
-            >
+            <Button size="small" onClick={() => navigate(`/workflow/instances`)}>
               查看进度
             </Button>
           </Space>
         </Card>
       );
-    } else if (actionType === 'SHOW_DATA') { // ✨ 新增：数据展示卡片
+    } else if (actionType === 'SHOW_DATA') {
       actionCard = (
         <Card size="small" style={{ marginTop: 12, border: '1px solid #faad14', background: '#fffbe6' }}>
           <Space>
@@ -109,10 +117,7 @@ const AgentPage: React.FC = () => {
               <Text strong>数据查询完成</Text>
               <div style={{ fontSize: 12, color: '#666' }}>模型: {actionValue}</div>
             </div>
-            <Button 
-              size="small" 
-              onClick={() => navigate(`/app/data/${actionValue}`)}
-            >
+            <Button size="small" onClick={() => navigate(`/app/data/${actionValue}`)}>
               查看详情
             </Button>
           </Space>
@@ -128,9 +133,11 @@ const AgentPage: React.FC = () => {
     );
   };
 
+  // 发送消息处理函数 (流式)
   const handleSend = async () => {
     if (!input.trim()) return;
 
+    // 1. 构建用户消息
     const userMessage: Message = {
       role: 'user',
       content: input,
@@ -138,32 +145,85 @@ const AgentPage: React.FC = () => {
       timestamp: new Date()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // 2. 预先构建一个空的 AI 消息占位
+    const assistantMessage: Message = {
+      role: 'assistant',
+      content: '', // 初始为空
+      displayContent: '',
+      timestamp: new Date(),
+      agentType: 'AUTO'
+    };
+
+    // 更新 UI，清空输入框
+    setMessages(prev => [...prev, userMessage, assistantMessage]);
+    const currentInput = input; // 暂存 input 用于发送请求
     setInput('');
     setLoading(true);
 
+    // 3. 准备 AbortController 用于取消请求
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
-      const axios = getAuthenticatedAxios();
-      const result = await executeAgent(axios, userMessage.content, user?.tenantId || '');
 
-      // 处理 AI 返回的消息
-      const aiText = result.success ? result.data : (result.error || '执行失败');
-      
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: aiText,
-        displayContent: parseMessageContent(aiText), // 🔥 解析 Action
-        timestamp: new Date(),
-        executionTime: result.executionTime,
-        agentType: 'AUTO' // 现在统一由 Assistant 接管，不再区分具体的 agentType
-      };
+      // 4. 发起 SSE 请求
+      await fetchSSE({
+        url: '/api/agent/stream', 
+        token: accessToken || '',
+        body: {
+          input: currentInput,
+          tenantId: user?.tenantId || ''
+        },
+        signal: abortController.signal,
+        onMessage: (chunk) => {
+          // 收到新片段，更新最后一条消息 (即 assistantMessage)
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastMsg = newMessages[newMessages.length - 1];
+            
+            if (lastMsg.role === 'assistant') {
+              const newContent = lastMsg.content + chunk;
+              // 更新内容并重新解析 Action 标签
+              return [
+                ...newMessages.slice(0, -1),
+                {
+                  ...lastMsg,
+                  content: newContent,
+                  displayContent: parseMessageContent(newContent)
+                }
+              ];
+            }
+            return prev;
+          });
+        },
+        onDone: () => {
+          setLoading(false);
+          abortControllerRef.current = null;
+        },
+        onError: (err) => {
+          console.error('SSE Error:', err);
+          message.error('回答生成中断或出错');
+          setLoading(false);
+        }
+      });
 
-      setMessages(prev => [...prev, assistantMessage]);
-      
     } catch (error) {
-      message.error('请求失败');
-    } finally {
+      console.error('Request failed:', error);
+      message.error('发送请求失败');
       setLoading(false);
+    }
+  };
+
+  // 停止生成
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setLoading(false);
+      message.info('已停止生成');
     }
   };
 
@@ -192,7 +252,7 @@ const AgentPage: React.FC = () => {
               ) : (
                 <List
                   dataSource={messages}
-                  renderItem={(msg) => (
+                  renderItem={(msg, index) => (
                     <List.Item style={{ border: 'none', padding: '12px 0' }}>
                       <List.Item.Meta
                         avatar={
@@ -204,7 +264,8 @@ const AgentPage: React.FC = () => {
                         title={
                           <Space>
                             {msg.role === 'user' ? '我' : 'Copilot'}
-                            {msg.role === 'assistant' && msg.executionTime && (
+                            {/* 只有当消息是助手发的，且不在加载中（已完成）时，才显示耗时(如果后端返回了的话) */}
+                            {msg.role === 'assistant' && !loading && index === messages.length - 1 && msg.executionTime && (
                               <span style={{ fontSize: 12, color: '#ccc' }}>耗时: {msg.executionTime}ms</span>
                             )}
                           </Space>
@@ -220,17 +281,16 @@ const AgentPage: React.FC = () => {
                           }}>
                             {/* 渲染解析后的富文本内容 */}
                             {msg.displayContent}
+                            {/* 如果是最后一条消息且正在加载，显示光标 */}
+                            {loading && msg.role === 'assistant' && index === messages.length - 1 && (
+                               <span style={{ display: 'inline-block', width: 8, height: 14, background: '#1890ff', marginLeft: 4, verticalAlign: 'middle', animation: 'blink 1s step-end infinite' }} />
+                            )}
                           </div>
                         }
                       />
                     </List.Item>
                   )}
                 />
-              )}
-              {loading && (
-                <div style={{ padding: '20px 60px' }}>
-                  <Spin tip="思考中..." />
-                </div>
               )}
             </div>
 
@@ -246,17 +306,30 @@ const AgentPage: React.FC = () => {
                     handleSend();
                   }
                 }}
+                disabled={loading} // 加载时禁用输入框防止冲突，或者允许排队（这里先禁用简单处理）
               />
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={handleSend}
-                loading={loading}
-                style={{ height: 'auto' }}
-                size="large"
-              >
-                发送
-              </Button>
+              {loading ? (
+                <Button
+                  danger // 红色按钮
+                  icon={<StopOutlined />}
+                  onClick={handleStop}
+                  style={{ height: 'auto' }}
+                  size="large"
+                >
+                  停止
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  onClick={handleSend}
+                  loading={false} // 这里的 loading 状态我们通过按钮切换来控制
+                  style={{ height: 'auto' }}
+                  size="large"
+                >
+                  发送
+                </Button>
+              )}
             </Space.Compact>
           </Card>
         </Col>
@@ -272,6 +345,11 @@ const AgentPage: React.FC = () => {
           </Card>
         </Col>
       </Row>
+      <style>{`
+        @keyframes blink {
+          50% { opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 };
